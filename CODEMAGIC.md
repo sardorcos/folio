@@ -3,7 +3,7 @@
 Сборки описаны в [`codemagic.yaml`](codemagic.yaml):
 
 - **`ios-ci`** — «FOLIO — сборка и тесты». Запускается на каждый push и pull request: компиляция всех targets без подписи и unit-тесты. Ключи Apple не нужны.
-- **`ios-testflight`** — «FOLIO → TestFlight». Запускается вручную: проверка → тесты → сертификат и профили → IPA → загрузка в TestFlight. Нужна разовая настройка ниже.
+- **`ios-testflight`** — «FOLIO → TestFlight». Запускается вручную (Start new build или API): тестировщики TestFlight → номер сборки → тесты → сертификат и профили → IPA → загрузка в TestFlight. Всё настроено, дополнительных действий не нужно.
 
 ## Состояние
 
@@ -14,48 +14,32 @@
 | Расширение «Поделиться» | `com.neverlandplayworks.folio.share` | ✅ App ID создан, App Groups включены |
 | App Group | `group.com.neverlandplayworks.folio` | ✅ создана и привязана к обоим App ID |
 | Карточка App Store Connect | SKU `folio-ios`, основной язык English (U.S.) | ✅ |
-| Codemagic | приложение **folio**, workflow `ios-ci` зелёный (сборка + 36 тестов) | ✅ |
+| Codemagic | приложение **folio**: `ios-ci` и `ios-testflight` зелёные | ✅ |
 | Политика конфиденциальности | <https://github.com/sardorcos/folio/blob/main/PRIVACY.md> | ✅ |
 | Поддержка (Support URL) | <https://github.com/sardorcos/folio/issues> | ✅ |
-| Ключи для подписи и загрузки | группа `app_store_credentials` в Codemagic | ⏳ шаги 3–5 ниже |
+| Ключ App Store Connect | интеграция команды Codemagic **`monetniy-mir-asc`** | ✅ |
+| Сертификат Distribution | общий `R6X78X2AJN`, закрытый ключ — `CERTIFICATE_PRIVATE_KEY` в группе **`shared_signing`** (folio, zikr, ulash, codevia) | ✅ |
+| Профили App Store | создаются/находятся автоматически (`fetch-signing-files --create`) | ✅ |
+| TestFlight | внутренняя группа **FOLIO Internal** (доступ ко всем сборкам), владелец аккаунта добавлен | ✅ |
+| Первая сборка | 0.6.0 (15) загружена в App Store Connect | ✅ |
 
 Bundle ID задан в Build Settings проекта (`FOLIO_APP_BUNDLE_ID`); из него получаются идентификаторы расширения, тестов и App Group. Менять его больше нельзя — он уже зарегистрирован в App Store Connect.
 
-Если нужен числовой **Apple ID** приложения (App Store Connect → App Information → General → Apple ID), добавьте его в `codemagic.yaml` как переменную `APP_STORE_APPLE_ID` — тогда номера сборок будут продолжаться от последнего в TestFlight. Без неё номер берётся из счётчика сборок Codemagic.
+Номер сборки подбирается сам: скрипт `scripts/asc_testflight.py` находит приложение (Apple ID `6837688523`), а шаг «Bundle ID и номер сборки» берёт «последний в TestFlight + 1».
 
 ---
 
-## Шаг 3. Ключ App Store Connect API (если ещё нет)
+## Как устроена подпись
 
-1. App Store Connect → **Users and Access** → **Integrations** → **App Store Connect API** → **Team Keys** → **+**.
-2. Name `Codemagic`, Access **App Manager** (или Admin) → Generate.
-3. Сохраните **Issuer ID**, **Key ID** и скачайте файл `AuthKey_XXXX.p8`. Скачать его можно только один раз.
+- **Ключ App Store Connect API** берётся из интеграции команды `monetniy-mir-asc` (`integrations: app_store_connect` в `codemagic.yaml`). Codemagic передаёт его ссылкой `@file:…` на `~/.appstoreconnect/private_keys/AuthKey_<ID>.p8` — этот файл нельзя перезаписывать (скрипты FOLIO кладут свою копию в `~/folio_asc_key`).
+- **Сертификат Apple Distribution** общий для приложений folio, zikr, ulash и codevia: его закрытый ключ хранится в защищённой переменной `CERTIFICATE_PRIVATE_KEY` группы `shared_signing` каждого из них. `app-store-connect fetch-signing-files … --certificate-key=@env:CERTIFICATE_PRIVATE_KEY` находит этот сертификат и не создаёт новый (у команды лимит — 3 сертификата Distribution).
+- **Профили** для `com.neverlandplayworks.folio` и `.share` (с App Group) создаются автоматически при первой сборке и переиспользуются.
+- **Development-сертификат не нужен**: `xcode-project use-profiles` + `build-ipa` подписывают сразу профилями App Store.
+- **Облачная подпись Xcode** (`-allowProvisioningUpdates`) не используется: у ключа `monetniy-mir-asc` нет роли Admin.
 
-## Шаг 4. Ключ для сертификата подписи
+## Запустить новую сборку
 
-Codemagic сам создаст сертификат Apple Distribution, но ему нужен закрытый RSA-ключ. Создайте его на любом компьютере:
-
-```bash
-ssh-keygen -t rsa -b 2048 -m PEM -f folio_cert_key -q -N ""
-```
-
-Нужен файл `folio_cert_key` (без `.pub`). Храните его надёжно: тем же ключом пользуются следующие сборки.
-
-## Шаг 5. Codemagic
-
-1. Приложение **folio** в Codemagic уже добавлено (репозиторий `sardorcos/folio`), workflow `ios-ci` проходит: сборка и 36 тестов.
-2. Приложение **folio** → **Environment variables** → создайте группу **`app_store_credentials`** с переменными (все отметьте **Secure**):
-
-   | Переменная | Значение |
-   | --- | --- |
-   | `APP_STORE_CONNECT_ISSUER_ID` | Issuer ID из шага 3 |
-   | `APP_STORE_CONNECT_KEY_IDENTIFIER` | Key ID из шага 3 |
-   | `APP_STORE_CONNECT_PRIVATE_KEY` | всё содержимое `AuthKey_XXXX.p8`, включая строки `-----BEGIN/END PRIVATE KEY-----` |
-   | `CERTIFICATE_PRIVATE_KEY` | всё содержимое `folio_cert_key` из шага 4 |
-
-   Если у команды уже есть ключ App Store Connect API (он используется в других ваших приложениях Codemagic), можно взять те же три значения — новый ключ создавать не обязательно.
-
-3. **Start new build** → ветка `main` → workflow **FOLIO → TestFlight**. Повторные загрузки запускаются так же (или добавьте в workflow блок `triggering`, чтобы отправлять каждый push в `main`).
+Codemagic → приложение **folio** → **Start new build** → ветка `main` → workflow **FOLIO → TestFlight**. Для повторного запуска без тестов (если код не менялся) можно передать переменную `SKIP_TESTS=1`.
 
 ## После сборки
 
@@ -69,8 +53,8 @@ ssh-keygen -t rsa -b 2048 -m PEM -f folio_cert_key -q -N ""
 | Шаг | Частая причина | Что сделать |
 | --- | --- | --- |
 | Подпись | Профиль не содержит App Group | Проверить в Identifiers, что у обоих App ID в App Groups отмечена `group.com.neverlandplayworks.folio`, и запустить сборку снова |
-| Подпись | Нет доступа к API | Проверить роль ключа (App Manager/Admin) и переменные группы |
-| Подпись | Достигнут лимит сертификатов Distribution | Отозвать старый сертификат в Certificates или использовать тот же `CERTIFICATE_PRIVATE_KEY` |
+| Подпись | «You already have a current Distribution certificate» | `CERTIFICATE_PRIVATE_KEY` не совпадает с общим сертификатом — проверить группу `shared_signing` (ключ должен быть одинаковым во всех приложениях) |
+| Подпись | Сертификат `R6X78X2AJN` отозван | Сгенерировать новый ключ, обновить `shared_signing` во всех приложениях — сертификат создастся заново |
 | Unit-тесты | Ошибка компиляции или упавший тест | Открыть лог шага; ошибки компиляции нужно исправить в коде |
 | Загрузка | «No suitable application records» | Проверить, что карточка «FOLIO — PDF & Scan» создана с Bundle ID `com.neverlandplayworks.folio` |
 | Загрузка | «The bundle version must be higher» | Указать `APP_STORE_APPLE_ID` в `codemagic.yaml` или запустить сборку ещё раз |
