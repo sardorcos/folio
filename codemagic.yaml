@@ -87,7 +87,8 @@ workflows:
           BUNDLE_ID=$(grep -m1 -oE 'FOLIO_APP_BUNDLE_ID = [^;]+' "$XCODE_PROJECT/project.pbxproj" | awk '{print $3}')
           python3 -m venv /tmp/ascenv
           /tmp/ascenv/bin/pip install --quiet --disable-pip-version-check pyjwt cryptography
-          /tmp/ascenv/bin/python scripts/asc_testflight.py "$BUNDLE_ID"
+          /tmp/ascenv/bin/python scripts/asc_testflight.py "$BUNDLE_ID" \
+            || echo "⚠️ Подготовка TestFlight через API не удалась — сборка и загрузка продолжаются"
 
       - name: Bundle ID и номер сборки
         script: |

@@ -9,6 +9,7 @@
 APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_PRIVATE_KEY. Секреты в лог не выводятся.
 Использование: asc_testflight.py <bundle id>
 """
+import base64
 import json
 import os
 import sys
@@ -23,10 +24,40 @@ API = "https://api.appstoreconnect.apple.com"
 GROUP_NAME = "FOLIO Internal"
 
 
-def token() -> str:
-    key = os.environ["APP_STORE_CONNECT_PRIVATE_KEY"]
-    if "\n" not in key.strip() and "\\n" in key:
+def resolve(value: str, depth: int = 0) -> str:
+    """Значение в формате Codemagic CLI: текст, `@file:<путь>` или `@env:<переменная>`."""
+    value = value.strip()
+    if depth < 3 and value.startswith("@file:"):
+        return resolve(open(os.path.expanduser(value[6:])).read(), depth + 1)
+    if depth < 3 and value.startswith("@env:"):
+        return resolve(os.environ.get(value[5:], ""), depth + 1)
+    return value
+
+
+def private_key() -> str:
+    raw = os.environ["APP_STORE_CONNECT_PRIVATE_KEY"]
+    key = resolve(raw)
+    if "\\n" in key and "\n" not in key:
         key = key.replace("\\n", "\n")
+    if "BEGIN" not in key:
+        try:
+            decoded = base64.b64decode(key, validate=False).decode()
+            if "BEGIN" in decoded:
+                key = decoded
+        except (ValueError, UnicodeDecodeError):
+            pass
+    if "BEGIN" not in key:
+        # Голое тело ключа без заголовков.
+        body = "".join(key.split())
+        key = "-----BEGIN PRIVATE KEY-----\n" + "\n".join(body[i:i + 64] for i in range(0, len(body), 64)) + "\n-----END PRIVATE KEY-----\n"
+    # Безопасная диагностика формата (без содержимого ключа).
+    print(f"Ключ API: формат источника {'@file' if raw.strip().startswith('@file:') else '@env' if raw.strip().startswith('@env:') else 'текст'}, "
+          f"строк {key.count(chr(10)) + 1}, PEM-заголовок {'есть' if 'BEGIN' in key else 'нет'}")
+    return key
+
+
+def token() -> str:
+    key = private_key()
     now = int(time.time())
     payload = {"iss": os.environ["APP_STORE_CONNECT_ISSUER_ID"], "iat": now, "exp": now + 15 * 60,
                "aud": "appstoreconnect-v1"}
