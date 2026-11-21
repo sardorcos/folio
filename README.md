@@ -23,6 +23,10 @@
 
 Проект использует синхронизируемые папки Xcode 16+: любой файл, добавленный в `FOLIO/` или `FOLIOTests/`, попадает в сборку автоматически, править `project.pbxproj` вручную не нужно.
 
+## Сборка без Mac: Codemagic → TestFlight
+
+Каждый push в `main` собирается в Codemagic и отправляется в TestFlight (`codemagic.yaml`). Разовая настройка Apple Developer, App Store Connect и Codemagic описана в [`CODEMAGIC.md`](CODEMAGIC.md).
+
 Перед отправкой в App Store:
 
 ```bash

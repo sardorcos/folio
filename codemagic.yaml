@@ -1,0 +1,104 @@
+# Сборка FOLIO в Codemagic и отправка в TestFlight.
+# Подготовка (один раз) описана в CODEMAGIC.md.
+workflows:
+  ios-testflight:
+    name: FOLIO → TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: latest
+      groups:
+        # APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_IDENTIFIER,
+        # APP_STORE_CONNECT_PRIVATE_KEY, CERTIFICATE_PRIVATE_KEY
+        - app_store_credentials
+      vars:
+        XCODE_PROJECT: FOLIO.xcodeproj
+        XCODE_SCHEME: FOLIO
+        # Необязательно: числовой Apple ID приложения из App Store Connect (App Information → Apple ID).
+        # Если задан, номер сборки берётся как «последний в TestFlight + 1».
+        APP_STORE_APPLE_ID: ""
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Проверка структуры проекта
+        script: python3 scripts/release_check.py
+
+      - name: Bundle ID и номер сборки
+        script: |
+          set -euo pipefail
+          PBX="$XCODE_PROJECT/project.pbxproj"
+          BUNDLE_ID="${BUNDLE_ID:-$(grep -m1 -oE 'FOLIO_APP_BUNDLE_ID = [^;]+' "$PBX" | awk '{print $3}')}"
+          echo "Bundle ID: $BUNDLE_ID"
+          echo "BUNDLE_ID=$BUNDLE_ID" >> "$CM_ENV"
+          # Подставляем конкретные идентификаторы, чтобы xcode-project use-profiles однозначно сопоставил профили.
+          perl -pi -e "s/FOLIO_APP_BUNDLE_ID = [^;]+;/FOLIO_APP_BUNDLE_ID = $BUNDLE_ID;/g" "$PBX"
+          perl -pi -e "s/\"\\\$\(FOLIO_APP_BUNDLE_ID\)\.share\"/$BUNDLE_ID.share/g; s/\"\\\$\(FOLIO_APP_BUNDLE_ID\)\.tests\"/$BUNDLE_ID.tests/g; s/\"\\\$\(FOLIO_APP_BUNDLE_ID\)\"/$BUNDLE_ID/g" "$PBX"
+          grep -n "PRODUCT_BUNDLE_IDENTIFIER" "$PBX"
+
+          LATEST=0
+          if [ -n "${APP_STORE_APPLE_ID:-}" ]; then
+            LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
+          fi
+          if [ "$LATEST" -gt 0 ] 2>/dev/null; then
+            NEW_BUILD=$((LATEST + 1))
+          else
+            NEW_BUILD=$((BUILD_NUMBER + 6))
+          fi
+          echo "Номер сборки: $NEW_BUILD"
+          perl -pi -e "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = $NEW_BUILD;/g" "$PBX"
+
+      - name: Unit-тесты
+        script: |
+          set -euo pipefail
+          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          ios = sorted((k for k in data if "iOS" in k), key=lambda k: [int(x) for x in k.split("iOS-")[-1].split("-")])
+          for runtime in reversed(ios):
+              for d in data[runtime]:
+                  if d["name"].startswith("iPhone") and d.get("isAvailable", True):
+                      print(d["udid"]); sys.exit()
+          ')
+          echo "Симулятор: $DEVICE_ID"
+          mkdir -p build/ios/test
+          set -o pipefail
+          xcodebuild test \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "id=$DEVICE_ID" \
+            -resultBundlePath build/ios/test/FOLIOTests.xcresult \
+            CODE_SIGNING_ALLOWED=NO | xcpretty --report junit --output build/ios/test/results.xml
+        test_report: build/ios/test/results.xml
+
+      - name: Подпись (сертификат и профили App Store)
+        script: |
+          set -euo pipefail
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          app-store-connect fetch-signing-files "$BUNDLE_ID.share" --type IOS_APP_STORE --create
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Сборка IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/test/*.xcresult
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
