@@ -71,9 +71,10 @@ workflows:
       app_store_connect: monetniy-mir-asc
     environment:
       xcode: latest
-      # Подпись — облачная, средствами Xcode (-allowProvisioningUpdates + ключ App Store Connect):
-      # Apple выдаёт управляемый сертификат Distribution и профили сам. Закрытый ключ сертификата не нужен,
-      # лимит Distribution-сертификатов команды не мешает.
+      groups:
+        # CERTIFICATE_PRIVATE_KEY — общий закрытый ключ сертификата Apple Distribution
+        # (одинаковый в приложениях folio, zikr, ulash, codevia).
+        - shared_signing
       vars:
         XCODE_PROJECT: FOLIO.xcodeproj
         XCODE_SCHEME: FOLIO
@@ -117,62 +118,28 @@ workflows:
 
       - *unit_tests
 
-      - name: Архив и IPA (облачная подпись Xcode)
+      - name: Подпись (общий сертификат Distribution и профили App Store)
         script: |
           set -euo pipefail
-          test -n "${FOLIO_TEAM_ID:-}" || { echo "Нет FOLIO_TEAM_ID — см. шаг TestFlight"; exit 1; }
-          AUTH=(-allowProvisioningUpdates
-                -authenticationKeyPath "$ASC_KEY_PATH"
-                -authenticationKeyID "$ASC_KEY_ID"
-                -authenticationKeyIssuerID "$ASC_ISSUER_ID")
-          mkdir -p build/ios/ipa
-          # Архив подписывается локально (ad-hoc, с entitlements, включая App Group) — сертификат разработчика
-          # не нужен. Подпись App Store ставится при экспорте облачной подписью Apple.
-          xcodebuild archive \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Release \
-            -destination "generic/platform=iOS" \
-            -archivePath build/ios/FOLIO.xcarchive \
-            DEVELOPMENT_TEAM="$FOLIO_TEAM_ID" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="-" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=NO \
-            PROVISIONING_PROFILE_SPECIFIER="" > build/ios/archive.log 2>&1 \
-            || { grep -E "error:|warning: .*(sign|profile|certificate)|Provisioning|Signing|No profiles|No Account" build/ios/archive.log | sort -u | head -40; tail -30 build/ios/archive.log; exit 1; }
-          echo "Архив создан"
-          for app in build/ios/FOLIO.xcarchive/Products/Applications/*.app build/ios/FOLIO.xcarchive/Products/Applications/*.app/PlugIns/*.appex; do
-            echo "== $app"; codesign -d --entitlements - "$app" 2>/dev/null | grep -A3 application-groups || echo "   (нет App Group в подписи)"
-          done
-          cat > build/ios/ExportOptions.plist <<PLIST
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key><string>app-store-connect</string>
-            <key>destination</key><string>export</string>
-            <key>signingStyle</key><string>automatic</string>
-            <key>teamID</key><string>$FOLIO_TEAM_ID</string>
-            <key>uploadSymbols</key><true/>
-            <key>manageAppVersionAndBuildNumber</key><false/>
-          </dict>
-          </plist>
-          PLIST
-          xcodebuild -exportArchive \
-            -archivePath build/ios/FOLIO.xcarchive \
-            -exportOptionsPlist build/ios/ExportOptions.plist \
-            -exportPath build/ios/ipa \
-            "${AUTH[@]}" > build/ios/export.log 2>&1 \
-            || { grep -E "error|Error|profile|certificate" build/ios/export.log | sort -u | head -40; tail -30 build/ios/export.log; exit 1; }
-          ls -la build/ios/ipa
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE --create --certificate-key=@env:CERTIFICATE_PRIVATE_KEY
+          app-store-connect fetch-signing-files "$BUNDLE_ID.share" \
+            --type IOS_APP_STORE --create --certificate-key=@env:CERTIFICATE_PRIVATE_KEY
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Сборка IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
 
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/test/*.xcresult
       - /tmp/xcodebuild_logs/*.log
-      - build/ios/FOLIO.xcarchive/dSYMs/*.dSYM
-      - build/ios/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
 
     publishing:
       app_store_connect:
