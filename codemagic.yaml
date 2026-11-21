@@ -61,26 +61,6 @@ workflows:
       - build/ios/test/*.xcresult
       - /tmp/xcodebuild_logs/*.log
 
-  # Создаёт/обновляет профили App Store для FOLIO и расширения в Apple Developer (без подписи).
-  # Нужен один раз и после изменения возможностей App ID или сертификатов.
-  ios-profiles:
-    name: FOLIO — профили App Store
-    instance_type: mac_mini_m2
-    max_build_duration: 15
-    integrations:
-      app_store_connect: monetniy-mir-asc
-    environment:
-      vars:
-        XCODE_PROJECT: FOLIO.xcodeproj
-    scripts:
-      - name: Профили App Store через API
-        script: |
-          set -euo pipefail
-          BUNDLE_ID=$(grep -m1 -oE 'FOLIO_APP_BUNDLE_ID = [^;]+' "$XCODE_PROJECT/project.pbxproj" | awk '{print $3}')
-          python3 -m venv /tmp/ascenv
-          /tmp/ascenv/bin/pip install --quiet --disable-pip-version-check pyjwt cryptography
-          /tmp/ascenv/bin/python scripts/asc_profiles.py "$BUNDLE_ID" "$BUNDLE_ID.share"
-
   ios-testflight:
     name: FOLIO → TestFlight
     instance_type: mac_mini_m2
@@ -90,12 +70,9 @@ workflows:
       app_store_connect: monetniy-mir-asc
     environment:
       xcode: latest
-      # Автоматическая подпись Codemagic: командный сертификат Apple Distribution из Code signing identities
-      # и профили App Store для FOLIO и расширения (их создаёт workflow ios-profiles через API).
-      # Новый сертификат создать нельзя: у команды исчерпан лимит Distribution-сертификатов.
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.neverlandplayworks.folio
+      # Подпись — облачная, средствами Xcode (-allowProvisioningUpdates + ключ App Store Connect):
+      # Apple выдаёт управляемый сертификат Distribution и профили сам. Закрытый ключ сертификата не нужен,
+      # лимит Distribution-сертификатов команды не мешает.
       vars:
         XCODE_PROJECT: FOLIO.xcodeproj
         XCODE_SCHEME: FOLIO
@@ -110,8 +87,7 @@ workflows:
           BUNDLE_ID=$(grep -m1 -oE 'FOLIO_APP_BUNDLE_ID = [^;]+' "$XCODE_PROJECT/project.pbxproj" | awk '{print $3}')
           python3 -m venv /tmp/ascenv
           /tmp/ascenv/bin/pip install --quiet --disable-pip-version-check pyjwt cryptography
-          /tmp/ascenv/bin/python scripts/asc_testflight.py "$BUNDLE_ID" \
-            || echo "⚠️ Подготовка TestFlight через API не удалась — сборка и загрузка продолжаются"
+          /tmp/ascenv/bin/python scripts/asc_testflight.py "$BUNDLE_ID"
 
       - name: Bundle ID и номер сборки
         script: |
@@ -138,29 +114,52 @@ workflows:
           perl -pi -e "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = $NEW_BUILD;/g" "$PBX"
 
 
-      - name: Подпись (сертификат и профили App Store)
-        script: |
-          set -euo pipefail
-          if [ ! -x /tmp/ascenv/bin/python ]; then
-            python3 -m venv /tmp/ascenv
-            /tmp/ascenv/bin/pip install --quiet --disable-pip-version-check pyjwt cryptography
-          fi
-          /tmp/ascenv/bin/python scripts/asc_profiles.py "$BUNDLE_ID" "$BUNDLE_ID.share"
-          xcode-project use-profiles
-
       - *unit_tests
 
-      - name: Сборка IPA
+      - name: Архив и IPA (облачная подпись Xcode)
         script: |
-          xcode-project build-ipa \
-            --project "$XCODE_PROJECT" \
-            --scheme "$XCODE_SCHEME"
+          set -euo pipefail
+          test -n "${FOLIO_TEAM_ID:-}" || { echo "Нет FOLIO_TEAM_ID — см. шаг TestFlight"; exit 1; }
+          AUTH=(-allowProvisioningUpdates
+                -authenticationKeyPath "$ASC_KEY_PATH"
+                -authenticationKeyID "$ASC_KEY_ID"
+                -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          mkdir -p build/ios/ipa
+          xcodebuild archive \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath build/ios/FOLIO.xcarchive \
+            "${AUTH[@]}" \
+            DEVELOPMENT_TEAM="$FOLIO_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic | xcpretty
+          cat > build/ios/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>$FOLIO_TEAM_ID</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath build/ios/FOLIO.xcarchive \
+            -exportOptionsPlist build/ios/ExportOptions.plist \
+            -exportPath build/ios/ipa \
+            "${AUTH[@]}" | xcpretty
+          ls -la build/ios/ipa
 
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/test/*.xcresult
       - /tmp/xcodebuild_logs/*.log
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+      - build/ios/FOLIO.xcarchive/dSYMs/*.dSYM
 
     publishing:
       app_store_connect:

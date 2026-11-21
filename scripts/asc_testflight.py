@@ -59,10 +59,10 @@ def private_key() -> str:
 def token() -> str:
     key = private_key()
     now = int(time.time())
-    payload = {"iss": os.environ["APP_STORE_CONNECT_ISSUER_ID"], "iat": now, "exp": now + 15 * 60,
+    payload = {"iss": resolve(os.environ["APP_STORE_CONNECT_ISSUER_ID"]), "iat": now, "exp": now + 15 * 60,
                "aud": "appstoreconnect-v1"}
     return jwt.encode(payload, key, algorithm="ES256",
-                      headers={"kid": os.environ["APP_STORE_CONNECT_KEY_IDENTIFIER"], "typ": "JWT"})
+                      headers={"kid": resolve(os.environ["APP_STORE_CONNECT_KEY_IDENTIFIER"]), "typ": "JWT"})
 
 
 TOKEN = None
@@ -101,10 +101,28 @@ def main() -> int:
     app = apps["data"][0]
     app_id = app["id"]
     print(f"Приложение: {app['attributes'].get('name')} — Apple ID {app_id}")
+    # Team ID (seedId Bundle ID) и файл ключа для облачной подписи xcodebuild (-allowProvisioningUpdates).
+    team_id = ""
+    status, bundles = call("GET", "/v1/bundleIds", query={"filter[identifier]": bundle_id, "limit": 20})
+    if status == 200:
+        team_id = next((b["attributes"].get("seedId", "") for b in bundles["data"]
+                        if b["attributes"]["identifier"] == bundle_id), "")
+    print(f"Team ID: {team_id or 'не найден'}")
+    key_dir = os.path.expanduser("~/.appstoreconnect/private_keys")
+    os.makedirs(key_dir, exist_ok=True)
+    key_id = resolve(os.environ["APP_STORE_CONNECT_KEY_IDENTIFIER"])
+    key_path = os.path.join(key_dir, f"AuthKey_{key_id}.p8")
+    with open(key_path, "w") as handle:
+        handle.write(private_key())
+    os.chmod(key_path, 0o600)
     env_file = os.environ.get("CM_ENV")
     if env_file:
         with open(env_file, "a") as handle:
             handle.write(f"APP_STORE_APPLE_ID={app_id}\n")
+            handle.write(f"FOLIO_TEAM_ID={team_id}\n")
+            handle.write(f"ASC_KEY_PATH={key_path}\n")
+            handle.write(f"ASC_KEY_ID={key_id}\n")
+            handle.write(f"ASC_ISSUER_ID={resolve(os.environ['APP_STORE_CONNECT_ISSUER_ID'])}\n")
 
     status, groups = call("GET", f"/v1/apps/{app_id}/betaGroups", query={"limit": 200})
     if status != 200:
