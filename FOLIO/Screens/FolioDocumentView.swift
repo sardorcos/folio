@@ -9,6 +9,8 @@ struct FolioDocumentView: View {
     @State private var newName = ""
     @State private var deletePresented = false
     @State private var shareURL: URL?
+    @State private var textPresented = false
+    @State private var pagesWithoutText = 0
 
     private var latest: FolioDocument {
         store.document(id: document.id) ?? document
@@ -41,6 +43,15 @@ struct FolioDocumentView: View {
                         store.toggleFavorite(latest)
                     }
                     Divider()
+                    Button("Текст документа", systemImage: "doc.plaintext") {
+                        textPresented = true
+                    }
+                    if pagesWithoutText > 0 {
+                        Button("Распознать текст", systemImage: "text.viewfinder") {
+                            store.makeSearchableCopy(of: latest)
+                        }
+                    }
+                    Divider()
                     Button("Удалить", systemImage: "trash", role: .destructive) {
                         deletePresented = true
                     }
@@ -51,6 +62,18 @@ struct FolioDocumentView: View {
         }
         .task(id: latest.title) {
             shareURL = try? store.makeShareCopy(for: latest)
+        }
+        .task(id: document.id) {
+            pagesWithoutText = await store.pagesWithoutText(in: latest)
+        }
+        .sheet(isPresented: $textPresented) {
+            FolioTextSheet(title: latest.title,
+                           text: store.documentText[document.id] ?? "",
+                           pagesWithoutText: pagesWithoutText,
+                           onRecognize: {
+                               textPresented = false
+                               store.makeSearchableCopy(of: latest)
+                           })
         }
         .alert("Новое название", isPresented: $renamePresented) {
             TextField("Название", text: $newName)
@@ -110,6 +133,77 @@ struct FolioPDFPreview: UIViewRepresentable {
     func updateUIView(_ viewer: PDFView, context: Context) {
         if viewer.document?.documentURL != url {
             viewer.document = PDFDocument(url: url)
+        }
+    }
+}
+
+/// Текст документа: можно выделить, скопировать и отправить.
+struct FolioTextSheet: View {
+    let title: String
+    let text: String
+    let pagesWithoutText: Int
+    let onRecognize: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var copied = false
+
+    private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if trimmed.isEmpty {
+                    ContentUnavailableView {
+                        Label("Текста нет", systemImage: "doc.text.magnifyingglass")
+                    } description: {
+                        Text("Похоже, это скан или фото. Распознайте текст, чтобы искать по нему и копировать.")
+                    } actions: {
+                        if pagesWithoutText > 0 {
+                            Button("Распознать текст", action: onRecognize)
+                                .buttonStyle(.borderedProminent)
+                        }
+                    }
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            if pagesWithoutText > 0 {
+                                FolioInlineMessage(symbol: "text.viewfinder",
+                                                   title: "Часть страниц без текста",
+                                                   subtitle: "Нажмите «Распознать», чтобы добавить текст со сканов.")
+                            }
+                            Text(verbatim: trimmed)
+                                .font(.body)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(18)
+                    }
+                }
+            }
+            .navigationTitle(Text(verbatim: title))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Закрыть") { dismiss() }
+                }
+                if !trimmed.isEmpty {
+                    ToolbarItemGroup(placement: .bottomBar) {
+                        Button {
+                            UIPasteboard.general.string = trimmed
+                            copied = true
+                        } label: {
+                            Label(copied ? "Скопировано" : "Копировать", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        }
+                        Spacer()
+                        if pagesWithoutText > 0 {
+                            Button("Распознать", action: onRecognize)
+                            Spacer()
+                        }
+                        ShareLink(item: trimmed) {
+                            Label("Поделиться", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                }
+            }
         }
     }
 }

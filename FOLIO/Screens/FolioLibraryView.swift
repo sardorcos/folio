@@ -69,7 +69,7 @@ struct FolioLibraryView: View {
                 }
             }
             .filter { !favoritesOnly || $0.isFavorite }
-            .filter { query.isEmpty || $0.title.localizedStandardContains(query) }
+            .filter { store.matchesSearch($0, query: query) }
             .sorted {
                 sortNewest ? $0.createdAt > $1.createdAt
                            : $0.title.localizedStandardCompare($1.title) == .orderedAscending
@@ -96,7 +96,23 @@ struct FolioLibraryView: View {
                 Section {
                     ForEach(results) { document in
                         NavigationLink(value: FolioRoute.document(document.id)) {
-                            FolioFileRow(document: document)
+                            VStack(alignment: .leading, spacing: 2) {
+                                FolioFileRow(document: document)
+                                if let snippet = store.textSnippet(for: document.id, matching: query),
+                                   !document.title.localizedStandardContains(query) {
+                                    Label {
+                                        Text(verbatim: snippet)
+                                            .lineLimit(2)
+                                    } icon: {
+                                        Image(systemName: "text.magnifyingglass")
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.leading, 54)
+                                    .padding(.bottom, 6)
+                                    .accessibilityLabel(Text("Найдено в тексте: \(snippet)"))
+                                }
+                            }
                         }
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
@@ -122,7 +138,7 @@ struct FolioLibraryView: View {
             }
         }
         .navigationTitle("Мои файлы")
-        .searchable(text: $query, prompt: Text("Поиск по названию"))
+        .searchable(text: $query, prompt: Text("Название или текст документа"))
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {

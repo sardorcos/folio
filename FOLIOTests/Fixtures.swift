@@ -3,6 +3,7 @@ import PDFKit
 import UIKit
 import UniformTypeIdentifiers
 import XCTest
+@testable import FOLIO
 
 /// Тестовые файлы создаются на лету: в репозитории нет пользовательских документов.
 enum Fixtures {
@@ -67,6 +68,35 @@ enum Fixtures {
         CGImageDestinationAddImage(destination, cgImage, properties as CFDictionary)
         XCTAssertTrue(CGImageDestinationFinalize(destination))
         return data as Data
+    }
+
+    /// Чёрный текст на белом фоне — для проверки распознавания.
+    static func makeTextImage(_ text: String = "FOLIO 2026 СКАНЕР") throws -> Data {
+        let size = CGSize(width: 1800, height: 700)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            (text as NSString).draw(at: CGPoint(x: 80, y: 260),
+                                    withAttributes: [.font: UIFont.boldSystemFont(ofSize: 130),
+                                                     .foregroundColor: UIColor.black])
+        }
+        return try XCTUnwrap(image.jpegData(compressionQuality: 0.95))
+    }
+
+    /// Пропускает тест, если Vision не умеет распознавать текст в этом окружении (бывает на части симуляторов).
+    static func requireTextRecognition() throws {
+        let data = try makeTextImage()
+        let image = try XCTUnwrap(UIImage(data: data)?.cgImage)
+        let lines: [RecognizedLine]
+        do {
+            lines = try TextRecognizer.recognizeLines(in: image)
+        } catch {
+            throw XCTSkip("Распознавание текста недоступно: \(error.localizedDescription)")
+        }
+        if lines.isEmpty { throw XCTSkip("Распознавание текста не вернуло результатов в этом окружении") }
     }
 
     static func pageWidths(of url: URL) throws -> [Int] {

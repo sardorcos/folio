@@ -107,16 +107,30 @@ def check_project():
     for obj in objects.values():
         if obj.get('isa') == 'PBXFileSystemSynchronizedRootGroup' and not (ROOT / obj['path']).is_dir():
             errors.append(f'pbxproj: нет папки {obj["path"]}')
-    app_settings = [o['buildSettings'] for o in objects.values()
-                    if o.get('isa') == 'XCBuildConfiguration'
-                    and 'ASSETCATALOG_COMPILER_APPICON_NAME' in o.get('buildSettings', {})]
-    if app_settings:
-        settings = app_settings[0]
-        bundle = settings.get('PRODUCT_BUNDLE_IDENTIFIER', '')
-        if bundle.startswith('com.example'):
-            warnings.append(f'Bundle ID «{bundle}» — замените на свой (Signing & Capabilities)')
-        if not settings.get('DEVELOPMENT_TEAM'):
-            warnings.append('DEVELOPMENT_TEAM не задан — выберите Team в Signing & Capabilities')
+    configs = [o.get('buildSettings', {}) for o in objects.values() if o.get('isa') == 'XCBuildConfiguration']
+    bundle_ids = {c['FOLIO_APP_BUNDLE_ID'] for c in configs if 'FOLIO_APP_BUNDLE_ID' in c}
+    if not bundle_ids:
+        errors.append('pbxproj: не задан FOLIO_APP_BUNDLE_ID (уровень проекта)')
+    elif any(b.startswith('com.example') for b in bundle_ids):
+        warnings.append(f'FOLIO_APP_BUNDLE_ID = {", ".join(sorted(bundle_ids))} — замените на свой '
+                        '(Build Settings проекта; App Group станет group.<bundle id>)')
+    app = [c for c in configs if 'ASSETCATALOG_COMPILER_APPICON_NAME' in c]
+    share = [c for c in configs if c.get('INFOPLIST_FILE', '').endswith('FOLIOShare-Info.plist')]
+    if app and not app[0].get('DEVELOPMENT_TEAM'):
+        warnings.append('DEVELOPMENT_TEAM не задан — выберите Team для FOLIO, FOLIOShare и FOLIOTests')
+    if not share:
+        errors.append('pbxproj: нет target расширения FOLIOShare')
+    for key in ('MARKETING_VERSION', 'CURRENT_PROJECT_VERSION'):
+        values = {c.get(key) for c in app + share}
+        if len(values) > 1:
+            errors.append(f'{key} у приложения и расширения должны совпадать, сейчас: {sorted(map(str, values))}')
+    expected = {'FOLIO': '$(FOLIO_APP_BUNDLE_ID)', 'FOLIOShare': '$(FOLIO_APP_BUNDLE_ID).share'}
+    for name, group in (('FOLIO', app), ('FOLIOShare', share)):
+        for config in group:
+            if config.get('PRODUCT_BUNDLE_IDENTIFIER') != expected[name]:
+                warnings.append(f'{name}: Bundle ID «{config.get("PRODUCT_BUNDLE_IDENTIFIER")}» не по схеме '
+                                f'{expected[name]} — App Group может не совпасть')
+                break
 
 
 def check_resources():
@@ -147,6 +161,23 @@ def check_resources():
             errors.append('PrivacyInfo: NSPrivacyTracking должен быть false')
     except Exception as exc:  # noqa: BLE001
         errors.append(f'PrivacyInfo.xcprivacy: {exc}')
+    for name in ('FOLIO.entitlements', 'FOLIOShare.entitlements'):
+        try:
+            entitlements = plistlib.loads((ROOT / 'Config' / name).read_bytes())
+            groups = entitlements.get('com.apple.security.application-groups', [])
+            if groups != ['group.$(FOLIO_APP_BUNDLE_ID)']:
+                errors.append(f'Config/{name}: App Group должна быть group.$(FOLIO_APP_BUNDLE_ID)')
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f'Config/{name}: {exc}')
+    try:
+        extension = plistlib.loads((ROOT / 'Config/FOLIOShare-Info.plist').read_bytes())['NSExtension']
+        if extension.get('NSExtensionPointIdentifier') != 'com.apple.share-services':
+            errors.append('FOLIOShare-Info.plist: неверный NSExtensionPointIdentifier')
+        rule = extension.get('NSExtensionAttributes', {}).get('NSExtensionActivationRule')
+        if not isinstance(rule, str) or 'TRUEPREDICATE' in rule:
+            errors.append('FOLIOShare-Info.plist: нужно правило активации (TRUEPREDICATE App Store не принимает)')
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f'Config/FOLIOShare-Info.plist: {exc}')
     try:
         catalog = json.loads((ROOT / 'FOLIO/Resources/Localizable.xcstrings').read_text(encoding='utf-8'))
         for key in ('%lld страниц', '%lld документов', '%lld файлов'):
@@ -158,7 +189,8 @@ def check_resources():
 
 
 def check_sources():
-    swift_files = sorted(ROOT.glob('FOLIO/**/*.swift')) + sorted(ROOT.glob('FOLIOTests/**/*.swift'))
+    swift_files = sorted(p for folder in ('FOLIO', 'Shared', 'FOLIOShare', 'FOLIOTests')
+                         for p in ROOT.glob(f'{folder}/**/*.swift'))
     swiftc = shutil.which('swiftc')
     for path in swift_files:
         text = path.read_text(encoding='utf-8')

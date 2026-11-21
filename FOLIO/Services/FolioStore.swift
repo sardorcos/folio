@@ -29,6 +29,8 @@ final class FolioStore: ObservableObject {
 
     @Published private(set) var isProcessing = false
     @Published private(set) var processingLabel = ""
+    /// Доля выполненной работы (0…1) для длительных операций; `nil` — неопределённый прогресс.
+    @Published private(set) var processingProgress: Double?
     @Published var alertMessage: String?
 
     @Published var exportQuality: PDFQuality = .original
@@ -38,6 +40,13 @@ final class FolioStore: ObservableObject {
     @Published private(set) var lastExportNote: String?
     @Published private(set) var canUndo = false
 
+    /// Распознавать текст (OCR) в фото и сканах. Хранится в UserDefaults.
+    @Published var ocrEnabled: Bool = true {
+        didSet { defaults.set(ocrEnabled, forKey: Self.ocrKey) }
+    }
+    /// Текст документов для поиска по содержимому. Хранится в `Text/<id>.txt`.
+    @Published private(set) var documentText: [UUID: String] = [:]
+
     private(set) var importIntent: ImportIntent = .documents
 
     private var undoStack: [[FolioDraftPage]] = [] {
@@ -46,6 +55,7 @@ final class FolioStore: ObservableObject {
     private var pendingEditorDocument: FolioDocument?
     private var replaceDraftOnImport = false
     private var pendingPasswordURLs: [URL] = []
+    private var passwordImportAddsToDraft = true
     private var currentTask: Task<Void, Never>?
     private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
 
@@ -53,21 +63,28 @@ final class FolioStore: ObservableObject {
     private let folder: URL
     private let indexURL: URL
     private let tempFolder: URL
+    private let textFolder: URL
+    private let inboxURL: URL?
     private let defaults: UserDefaults
     private static let templatesKey = "folio.savedWorkflows"
+    private static let ocrKey = "folio.ocrEnabled"
 
     // MARK: - Запуск
 
     /// - Parameters:
     ///   - baseURL: каталог хранилища. По умолчанию `Application Support/FOLIO` (как в 0.4.0, для миграции).
-    ///   - defaults: хранилище шаблонов. В тестах передаётся отдельный suite.
-    init(baseURL: URL? = nil, defaults: UserDefaults = .standard) {
+    ///   - defaults: хранилище шаблонов и настроек. В тестах передаётся отдельный suite.
+    ///   - inboxURL: общая папка расширения «Поделиться». По умолчанию — папка App Group.
+    init(baseURL: URL? = nil, defaults: UserDefaults = .standard, inboxURL: URL? = FolioInbox.directory) {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         root = baseURL ?? support.appendingPathComponent("FOLIO", isDirectory: true)
         folder = root.appendingPathComponent("Files", isDirectory: true)
         indexURL = root.appendingPathComponent("index.json")
         tempFolder = root.appendingPathComponent("Temp", isDirectory: true)
+        textFolder = root.appendingPathComponent("Text", isDirectory: true)
+        self.inboxURL = inboxURL
         self.defaults = defaults
+        ocrEnabled = defaults.object(forKey: Self.ocrKey) as? Bool ?? true
 
         let fileManager = FileManager.default
         try? fileManager.removeItem(at: tempFolder)
@@ -75,11 +92,13 @@ final class FolioStore: ObservableObject {
         do {
             try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
             try fileManager.createDirectory(at: tempFolder, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: textFolder, withIntermediateDirectories: true)
         } catch {
             alertMessage = String(localized: "Не удалось подготовить хранилище: \(error.localizedDescription)")
         }
         loadLibrary()
         loadTemplates()
+        Task { [weak self] in await self?.loadTextIndex() }
     }
 
     private func loadLibrary() {
@@ -168,6 +187,23 @@ final class FolioStore: ObservableObject {
 
     func localURL(forDocumentID id: UUID) -> URL? {
         document(id: id).map(localURL(for:))
+    }
+
+    /// Фрагмент текста документа вокруг найденного запроса — для подсказки в результатах поиска.
+    func textSnippet(for id: UUID, matching query: String) -> String? {
+        guard !query.isEmpty, let text = documentText[id],
+              let range = text.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) else { return nil }
+        let start = text.index(range.lowerBound, offsetBy: -40, limitedBy: text.startIndex) ?? text.startIndex
+        let end = text.index(range.upperBound, offsetBy: 60, limitedBy: text.endIndex) ?? text.endIndex
+        let fragment = text[start..<end].components(separatedBy: .newlines).joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+        return (start > text.startIndex ? "…" : "") + fragment + (end < text.endIndex ? "…" : "")
+    }
+
+    func matchesSearch(_ document: FolioDocument, query: String) -> Bool {
+        guard !query.isEmpty else { return true }
+        if document.title.localizedStandardContains(query) { return true }
+        return documentText[document.id]?.localizedStandardContains(query) ?? false
     }
 
     func draftPageCount(referencing ids: Set<UUID>) -> Int {
@@ -275,17 +311,20 @@ final class FolioStore: ObservableObject {
     }
 
     /// Импорт файлов. Вызывается из UI через `runProcessing` и напрямую из тестов.
-    func performImport(urls: [URL], replace: Bool) async {
+    /// - Parameter addToDraft: `false` — только в библиотеку (файлы из «Поделиться» при занятом черновике).
+    func performImport(urls: [URL], replace: Bool, addToDraft: Bool = true) async {
         let directory = folder
         let temp = tempFolder
+        let ocr = ocrEnabled
         var imported: [FolioDocument] = []
         var failures: [String] = []
         var locked: [URL] = []
-        for url in urls {
+        for (index, url) in urls.enumerated() {
             if Task.isCancelled { break }
+            processingProgress = urls.count > 1 ? Double(index) / Double(urls.count) : nil
             do {
                 let document = try await Self.offMain {
-                    try PDFWorker.importFile(url: url, id: UUID(), directory: directory, tempDirectory: temp)
+                    try PDFWorker.importFile(url: url, id: UUID(), ocr: ocr, directory: directory, tempDirectory: temp)
                 }
                 imported.append(document)
             } catch is CancellationError {
@@ -296,9 +335,11 @@ final class FolioStore: ObservableObject {
                 failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
             }
         }
-        finishImport(imported, replace: replace, failures: failures, total: urls.count)
+        finishImport(imported, replace: replace, failures: failures, total: urls.count, addToDraft: addToDraft)
+        await indexText(for: imported)
         if !locked.isEmpty && !Task.isCancelled {
             pendingPasswordURLs = locked
+            passwordImportAddsToDraft = addToDraft
             askNextPassword()
         }
     }
@@ -329,7 +370,9 @@ final class FolioStore: ObservableObject {
                                              directory: directory, tempDirectory: temp)
                 }
                 // Документ добавляется к комплекту, который уже обновлён первой частью импорта.
-                self.finishImport([document], replace: false, failures: [], total: 1)
+                self.finishImport([document], replace: false, failures: [], total: 1,
+                                  addToDraft: self.passwordImportAddsToDraft)
+                await self.indexText(for: [document])
                 self.askNextPassword()
             } catch FolioIssue.wrongPassword {
                 self.askNextPassword(wrongAttempt: true, url: url)
@@ -382,6 +425,8 @@ final class FolioStore: ObservableObject {
                             failedBefore: Int = 0, total: Int? = nil) async {
         let directory = folder
         let temp = tempFolder
+        let ocr = ocrEnabled
+        let progress = progressHandler()
         let stamp = Date().formatted(date: .numeric, time: .shortened)
         let title = origin == .scan ? String(localized: "Скан \(stamp)") : String(localized: "Фото \(stamp)")
         var failures = Array(repeating: String(localized: "Фото не удалось загрузить"), count: failedBefore)
@@ -390,11 +435,14 @@ final class FolioStore: ObservableObject {
             return
         }
         do {
+            if ocr { processingLabel = String(localized: "Распознаём текст…") }
             let document = try await Self.offMain {
                 try PDFWorker.importImages(inputs, id: UUID(), title: title, origin: origin,
+                                           ocr: ocr, progress: progress,
                                            directory: directory, tempDirectory: temp)
             }
             finishImport([document], replace: replace, failures: failures, total: total ?? inputs.count)
+            await indexText(for: [document])
         } catch is CancellationError {
             return
         } catch {
@@ -451,9 +499,14 @@ final class FolioStore: ObservableObject {
         return replace
     }
 
-    private func finishImport(_ imported: [FolioDocument], replace: Bool, failures: [String], total: Int) {
+    private func finishImport(_ imported: [FolioDocument], replace: Bool, failures: [String], total: Int,
+                              addToDraft: Bool = true) {
         var messages: [String] = []
-        if !imported.isEmpty {
+        if !imported.isEmpty && !addToDraft {
+            documents.insert(contentsOf: imported, at: 0)
+            persist()
+            messages.append(String(localized: "Добавлено в «Мои файлы»: \(FolioPlural.documents(imported.count)). Текущий PDF не изменён."))
+        } else if !imported.isEmpty {
             documents.insert(contentsOf: imported, at: 0)
             var newDraft = replace ? [] : draft
             var skipped: [String] = []
@@ -642,6 +695,8 @@ final class FolioStore: ObservableObject {
         for document in removed {
             let url = localURL(for: document)
             try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: textURL(for: document.id))
+            documentText[document.id] = nil
             Task { await ThumbnailRenderer.shared.forget(url: url) }
         }
         documents.removeAll { ids.contains($0.id) }
@@ -668,7 +723,11 @@ final class FolioStore: ObservableObject {
 
     /// «Удалить все документы» в настройках. Шаблоны сохраняются.
     func deleteAllDocuments() {
-        for document in documents { try? FileManager.default.removeItem(at: localURL(for: document)) }
+        for document in documents {
+            try? FileManager.default.removeItem(at: localURL(for: document))
+            try? FileManager.default.removeItem(at: textURL(for: document.id))
+        }
+        documentText = [:]
         Task { await ThumbnailRenderer.shared.forgetAll() }
         documents = []
         draft = []
@@ -701,6 +760,8 @@ final class FolioStore: ObservableObject {
         let directory = folder
         let temp = tempFolder
         let quality = exportQuality
+        let ocr = ocrEnabled
+        let progress = progressHandler()
         let target = targetSizeMB
         let targetBytes = target.map { Int64($0) * 1_000_000 }
         let id = UUID()
@@ -710,7 +771,7 @@ final class FolioStore: ObservableObject {
             let outcome = try await Self.offMain {
                 try PDFWorker.export(pages: pages, documents: sources, directory: directory, tempDirectory: temp,
                                      destination: destination, title: title, quality: quality,
-                                     targetBytes: targetBytes)
+                                     targetBytes: targetBytes, ocr: ocr, progress: progress)
             }
             let document = FolioDocument(id: id, title: title, relativePath: relativePath,
                                          kind: .result, origin: .pdf, pageCount: pages.count,
@@ -719,6 +780,7 @@ final class FolioStore: ObservableObject {
             lastResultID = id
             lastExportNote = Self.note(for: outcome, quality: quality, target: target, targetBytes: targetBytes)
             persist()
+            await indexText(for: [document])
             tab = .home
             homePath = [.composer, .export, .result]
         } catch is CancellationError {
@@ -797,12 +859,151 @@ final class FolioStore: ObservableObject {
         startTask(workflow.intent, preset: workflow.preset)
     }
 
+    // MARK: - Распознавание текста (OCR)
+
+    /// Сколько страниц документа без текста — показывать ли действие «Распознать текст».
+    func pagesWithoutText(in document: FolioDocument) async -> Int {
+        let url = localURL(for: document)
+        return (try? await Self.offMain { PDFWorker.pagesWithoutText(at: url) }) ?? 0
+    }
+
+    /// Создаёт копию документа с распознанным текстом и открывает её. Оригинал не меняется.
+    func makeSearchableCopy(of document: FolioDocument) {
+        let source = localURL(for: document)
+        let directory = folder
+        let temp = tempFolder
+        let title = String(localized: "\(document.title) (с текстом)").folioCleanTitle(fallback: document.title)
+        let progress = progressHandler()
+        runProcessing(String(localized: "Распознаём текст…")) { [weak self] in
+            guard let self else { return }
+            do {
+                let outcome = try await Self.offMain {
+                    try PDFWorker.makeSearchableCopy(of: source, id: UUID(), title: title,
+                                                     directory: directory, tempDirectory: temp, progress: progress)
+                }
+                let copy = outcome.document
+                let recognized = outcome.recognizedPages
+                guard recognized > 0 else {
+                    try? FileManager.default.removeItem(at: self.localURL(for: copy))
+                    self.alertMessage = String(localized: "Текст на страницах не найден. Попробуйте скан лучшего качества.")
+                    return
+                }
+                self.documents.insert(copy, at: 0)
+                self.persist()
+                await self.indexText(for: [copy])
+                self.openDocument(copy.id, replacing: document.id)
+                self.alertMessage = String(localized: "Текст распознан: \(FolioPlural.pages(recognized)). Создан документ «\(copy.title)».")
+            } catch is CancellationError {
+                return
+            } catch {
+                self.alertMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Открывает документ вместо текущего экрана документа во вкладке, где пользователь находится.
+    private func openDocument(_ id: UUID, replacing oldID: UUID) {
+        func replaceRoute(in path: inout [FolioRoute]) -> Bool {
+            guard let index = path.lastIndex(of: .document(oldID)) else { return false }
+            path[index] = .document(id)
+            return true
+        }
+        if tab == .files, replaceRoute(in: &filesPath) { return }
+        if tab == .home, replaceRoute(in: &homePath) { return }
+        tab = .files
+        filesPath = [.document(id)]
+    }
+
+    private func textURL(for id: UUID) -> URL {
+        textFolder.appendingPathComponent("\(id.uuidString).txt")
+    }
+
+    private struct TextJob: Sendable {
+        let id: UUID
+        let pdf: URL
+        let text: URL
+        let readExisting: Bool
+    }
+
+    private struct TextEntry: Sendable {
+        let id: UUID
+        let text: String
+    }
+
+    /// Извлекает текст новых документов и сохраняет его для поиска.
+    func indexText(for documents: [FolioDocument]) async {
+        guard !documents.isEmpty else { return }
+        let jobs = documents.map { TextJob(id: $0.id, pdf: localURL(for: $0), text: textURL(for: $0.id), readExisting: false) }
+        await runTextJobs(jobs)
+    }
+
+    /// При запуске: читает сохранённый текст, а для документов без него (например, из 0.4.0) извлекает заново.
+    private func loadTextIndex() async {
+        let jobs = documents.map {
+            TextJob(id: $0.id, pdf: localURL(for: $0), text: textURL(for: $0.id), readExisting: true)
+        }
+        await runTextJobs(jobs)
+    }
+
+    private func runTextJobs(_ jobs: [TextJob]) async {
+        let entries = (try? await Self.offMain { () -> [TextEntry] in
+            jobs.map { job in
+                if job.readExisting, let saved = try? String(contentsOf: job.text, encoding: .utf8) {
+                    return TextEntry(id: job.id, text: saved)
+                }
+                let text = PDFWorker.extractText(from: job.pdf)
+                try? text.write(to: job.text, atomically: true, encoding: .utf8)
+                return TextEntry(id: job.id, text: text)
+            }
+        }) ?? []
+        for entry in entries where document(id: entry.id) != nil {
+            documentText[entry.id] = entry.text
+        }
+    }
+
+    // MARK: - Файлы из «Поделиться»
+
+    /// Вызывается при каждом переходе приложения в активное состояние.
+    /// Если черновик пуст, файлы сразу открываются в редакторе; иначе попадают только в библиотеку.
+    func importSharedFiles() {
+        guard !isProcessing else { return }
+        let urls = collectSharedFiles()
+        guard !urls.isEmpty else { return }
+        let addToDraft = draft.isEmpty
+        runProcessing(String(localized: "Добавляем файлы из «Поделиться»…")) { [weak self] in
+            await self?.performSharedImport(urls, addToDraft: addToDraft)
+        }
+    }
+
+    /// Забирает завершённые пакеты из общей папки во временную папку приложения.
+    func collectSharedFiles() -> [URL] {
+        guard let inboxURL else { return [] }
+        let destination = tempFolder.appendingPathComponent("Shared-\(UUID().uuidString)", isDirectory: true)
+        return FolioInbox.takeAll(from: inboxURL, movingTo: destination)
+    }
+
+    func performSharedImport(_ urls: [URL], addToDraft: Bool) async {
+        importIntent = .documents
+        await performImport(urls: urls, replace: false, addToDraft: addToDraft)
+    }
+
     // MARK: - Длительные операции
+
+    /// Обновляет `processingProgress` из фоновой работы.
+    private func progressHandler() -> PDFWorker.FolioProgress {
+        { [weak self] done, total in
+            Task { @MainActor in
+                guard let self, self.isProcessing else { return }
+                self.processingProgress = total > 0 ? min(1, Double(done) / Double(total)) : nil
+            }
+        }
+    }
 
     private func runProcessing(_ label: String, _ operation: @escaping @MainActor () async -> Void) {
         guard !isProcessing else { return }
         isProcessing = true
         processingLabel = label
+        processingProgress = nil
         beginBackgroundWork()
         currentTask = Task { [weak self] in
             await operation()
@@ -813,6 +1014,7 @@ final class FolioStore: ObservableObject {
     private func endProcessing() {
         isProcessing = false
         processingLabel = ""
+        processingProgress = nil
         currentTask = nil
         endBackgroundWork()
     }

@@ -14,6 +14,16 @@ struct FolioSettingsView: View {
                     .listRowBackground(Color.clear)
             }
 
+            Section {
+                Toggle(isOn: $store.ocrEnabled) {
+                    Label("Распознавать текст", systemImage: "text.viewfinder")
+                }
+            } header: {
+                Text("Распознавание текста (OCR)")
+            } footer: {
+                Text("Текст на фото и сканах распознаётся прямо на iPhone: по нему можно искать в «Файлах», его можно выделить и скопировать в готовом PDF. Языки: русский и английский.")
+            }
+
             Section("Хранилище") {
                 LabeledContent {
                     Text(FolioPlural.documents(store.documents.count))

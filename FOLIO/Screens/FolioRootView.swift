@@ -110,7 +110,7 @@ struct FolioRootView: View {
         }
         .overlay {
             if store.isProcessing {
-                FolioProcessingOverlay(label: store.processingLabel) {
+                FolioProcessingOverlay(label: store.processingLabel, progress: store.processingProgress) {
                     store.cancelProcessing()
                 }
             }
@@ -144,13 +144,20 @@ struct FolioRouteDestination: View {
 
 struct FolioProcessingOverlay: View {
     let label: String
+    var progress: Double? = nil
     let onCancel: () -> Void
 
     var body: some View {
         ZStack {
             Color.black.opacity(0.25).ignoresSafeArea()
             VStack(spacing: 16) {
-                ProgressView().controlSize(.large)
+                if let progress {
+                    ProgressView(value: progress)
+                        .frame(width: 200)
+                        .accessibilityValue(Text("\(Int(progress * 100)) %"))
+                } else {
+                    ProgressView().controlSize(.large)
+                }
                 Text(label)
                     .font(.headline)
                     .multilineTextAlignment(.center)

@@ -34,7 +34,7 @@ struct FolioExportView: View {
                 VStack(alignment: .leading, spacing: 11) {
                     Text("Качество PDF").font(.headline)
                     ForEach(PDFQuality.allCases) { quality in
-                        FolioChoiceRow(title: quality.title, subtitle: quality.subtitle,
+                        FolioChoiceRow(title: quality.title, subtitle: quality.explanation(ocr: store.ocrEnabled),
                                        isSelected: store.exportQuality == quality) {
                             store.exportQuality = quality
                         }

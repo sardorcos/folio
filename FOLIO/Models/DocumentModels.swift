@@ -116,6 +116,12 @@ enum PDFQuality: String, CaseIterable, Identifiable, Codable, Sendable {
             String(localized: "Все страницы станут изображениями. Текст нельзя будет выделить и найти.")
         }
     }
+
+    /// Описание с учётом OCR: при включённом распознавании текст в сжатых страницах восстанавливается.
+    func explanation(ocr: Bool) -> String {
+        guard ocr, self == .maximum else { return subtitle }
+        return String(localized: "Все страницы станут изображениями. Текст будет распознан заново (OCR) — возможны неточности.")
+    }
 }
 
 /// Настройки экспорта, которые можно применить при запуске задачи или шаблона.
