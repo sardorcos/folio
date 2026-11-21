@@ -62,6 +62,8 @@ final class PDFWorkerTests: XCTestCase {
                                                 directory: library, tempDirectory: temp)
         let stored = try XCTUnwrap(PDFDocument(url: library.appendingPathComponent(document.relativePath)))
         XCTAssertFalse(stored.isLocked, "В библиотеке хранится копия без пароля")
+        XCTAssertFalse(stored.isEncrypted, "Копия не зашифрована")
+        XCTAssertTrue(PDFWorker.extractText(from: library.appendingPathComponent(document.relativePath)).contains("Страница 1"))
         XCTAssertEqual(stored.pageCount, 2)
     }
 

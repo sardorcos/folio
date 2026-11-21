@@ -75,7 +75,9 @@ enum PDFWorker {
             guard pageCount <= FolioLimits.draftPages else { throw FolioIssue.tooManyPages(limit: FolioLimits.draftPages) }
             if password != nil {
                 // Разблокированный документ сохраняем без пароля, иначе его нельзя будет открыть при сборке.
-                guard pdf.write(to: staging) else { throw FolioIssue.failedToSave }
+                // `write(to:)` у разблокированного документа снова шифрует файл, поэтому страницы
+                // копируются в новый документ без шифрования.
+                try writeDecryptedCopy(of: pdf, to: staging)
             } else {
                 try FileManager.default.copyItem(at: readURL, to: staging)
             }
@@ -102,6 +104,17 @@ enum PDFWorker {
                              pageCount: pageCount,
                              byteCount: try byteCount(for: target),
                              createdAt: Date())
+    }
+
+    private static func writeDecryptedCopy(of source: PDFDocument, to url: URL) throws {
+        let plain = PDFDocument()
+        for index in 0..<source.pageCount {
+            guard let page = source.page(at: index)?.copy() as? PDFPage else { throw FolioIssue.corruptedPDF }
+            plain.insert(page, at: index)
+        }
+        if let attributes = source.documentAttributes { plain.documentAttributes = attributes }
+        guard plain.write(to: url) else { throw FolioIssue.failedToSave }
+        withExtendedLifetime(source) {}
     }
 
     // MARK: - Фото и сканы

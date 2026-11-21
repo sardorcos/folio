@@ -53,10 +53,14 @@ final class OCRTests: XCTestCase {
         let textPDF = directory.appendingPathComponent("text.pdf")
         try Fixtures.makePDF(widths: [400], at: textPDF)
         let combined = try XCTUnwrap(PDFDocument(url: library.appendingPathComponent(scan.relativePath)))
-        let textPage = try XCTUnwrap(PDFDocument(url: textPDF)?.page(at: 0)?.copy() as? PDFPage)
+        // Исходный документ должен жить, пока копия его страницы не записана.
+        let textDocument = try XCTUnwrap(PDFDocument(url: textPDF))
+        let textPage = try XCTUnwrap(textDocument.page(at: 0)?.copy() as? PDFPage)
         combined.insert(textPage, at: 1)
         let mixed = directory.appendingPathComponent("mixed.pdf")
         XCTAssertTrue(combined.write(to: mixed))
+        withExtendedLifetime(textDocument) {}
+        XCTAssertEqual(PDFWorker.pagesWithoutText(at: mixed), 1, "В тестовом PDF одна страница-скан и одна текстовая")
 
         let outcome = try PDFWorker.makeSearchableCopy(of: mixed, id: UUID(), title: "С текстом",
                                                        directory: library, tempDirectory: temp)
