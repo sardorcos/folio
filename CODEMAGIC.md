@@ -1,7 +1,9 @@
 # Сборка в Codemagic и отправка в TestFlight
 
-Сборка описана в [`codemagic.yaml`](codemagic.yaml). Каждый push в `main` запускает цепочку:
-проверка проекта → unit-тесты на симуляторе → сертификат и профили → сборка IPA → загрузка в TestFlight.
+Сборки описаны в [`codemagic.yaml`](codemagic.yaml):
+
+- **`ios-ci`** — «FOLIO — сборка и тесты». Запускается на каждый push и pull request: компиляция всех targets без подписи и unit-тесты. Ключи Apple не нужны.
+- **`ios-testflight`** — «FOLIO → TestFlight». Запускается вручную: проверка → тесты → сертификат и профили → IPA → загрузка в TestFlight. Нужна разовая настройка ниже.
 
 Bundle ID задан в проекте: **`com.sardorcos.folio`** (Build Settings проекта → `FOLIO_APP_BUNDLE_ID`).
 От него получаются:
@@ -60,7 +62,7 @@ ssh-keygen -t rsa -b 2048 -m PEM -f folio_cert_key -q -N ""
    | `APP_STORE_CONNECT_PRIVATE_KEY` | всё содержимое `AuthKey_XXXX.p8`, включая строки `-----BEGIN/END PRIVATE KEY-----` |
    | `CERTIFICATE_PRIVATE_KEY` | всё содержимое `folio_cert_key` из шага 4 |
 
-3. **Start new build** → ветка `main` → workflow **FOLIO → TestFlight**. Дальше сборки запускаются автоматически при каждом push в `main`.
+3. **Start new build** → ветка `main` → workflow **FOLIO → TestFlight**. Повторные загрузки запускаются так же (или добавьте в workflow блок `triggering`, чтобы отправлять каждый push в `main`).
 
 ## После сборки
 

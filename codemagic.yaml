@@ -1,6 +1,66 @@
 # Сборка FOLIO в Codemagic и отправка в TestFlight.
 # Подготовка (один раз) описана в CODEMAGIC.md.
+definitions:
+  scripts:
+    - &unit_tests
+      name: Unit-тесты
+      script: |
+        set -euo pipefail
+        DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c '
+        import json, sys
+        data = json.load(sys.stdin)["devices"]
+        ios = sorted((k for k in data if "iOS" in k), key=lambda k: [int(x) for x in k.split("iOS-")[-1].split("-")])
+        for runtime in reversed(ios):
+            for d in data[runtime]:
+                if d["name"].startswith("iPhone") and d.get("isAvailable", True):
+                    print(d["udid"]); sys.exit()
+        ')
+        echo "Симулятор: $DEVICE_ID"
+        mkdir -p build/ios/test
+        xcodebuild test \
+          -project "$XCODE_PROJECT" \
+          -scheme "$XCODE_SCHEME" \
+          -destination "id=$DEVICE_ID" \
+          -resultBundlePath build/ios/test/FOLIOTests.xcresult \
+          CODE_SIGNING_ALLOWED=NO | xcpretty --report junit --output build/ios/test/results.xml
+      test_report: build/ios/test/results.xml
+
 workflows:
+  # Проверка без подписи и ключей Apple: компиляция всех targets и unit-тесты. Запускается на любой ветке.
+  ios-ci:
+    name: FOLIO — сборка и тесты
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    environment:
+      xcode: latest
+      vars:
+        XCODE_PROJECT: FOLIO.xcodeproj
+        XCODE_SCHEME: FOLIO
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: "*"
+          include: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Проверка структуры проекта
+        script: python3 scripts/release_check.py
+      - name: Сборка для устройства без подписи
+        script: |
+          set -euo pipefail
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO | xcpretty
+      - *unit_tests
+    artifacts:
+      - build/ios/test/*.xcresult
+      - /tmp/xcodebuild_logs/*.log
+
   ios-testflight:
     name: FOLIO → TestFlight
     instance_type: mac_mini_m2
@@ -15,15 +75,9 @@ workflows:
         XCODE_PROJECT: FOLIO.xcodeproj
         XCODE_SCHEME: FOLIO
         # Необязательно: числовой Apple ID приложения из App Store Connect (App Information → Apple ID).
-        # Если задан, номер сборки берётся как «последний в TestFlight + 1».
-        APP_STORE_APPLE_ID: ""
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-      cancel_previous_builds: true
+        # Если добавить переменную APP_STORE_APPLE_ID, номер сборки будет «последний в TestFlight + 1».
+        # Пустые значения Codemagic не принимает — добавляйте переменную только со значением.
+    # Запускается вручную (Start new build) или через API, когда настроены ключи Apple — см. CODEMAGIC.md.
     scripts:
       - name: Проверка структуры проекта
         script: python3 scripts/release_check.py
@@ -52,28 +106,7 @@ workflows:
           echo "Номер сборки: $NEW_BUILD"
           perl -pi -e "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = $NEW_BUILD;/g" "$PBX"
 
-      - name: Unit-тесты
-        script: |
-          set -euo pipefail
-          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
-          data = json.load(sys.stdin)["devices"]
-          ios = sorted((k for k in data if "iOS" in k), key=lambda k: [int(x) for x in k.split("iOS-")[-1].split("-")])
-          for runtime in reversed(ios):
-              for d in data[runtime]:
-                  if d["name"].startswith("iPhone") and d.get("isAvailable", True):
-                      print(d["udid"]); sys.exit()
-          ')
-          echo "Симулятор: $DEVICE_ID"
-          mkdir -p build/ios/test
-          set -o pipefail
-          xcodebuild test \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -destination "id=$DEVICE_ID" \
-            -resultBundlePath build/ios/test/FOLIOTests.xcresult \
-            CODE_SIGNING_ALLOWED=NO | xcpretty --report junit --output build/ios/test/results.xml
-        test_report: build/ios/test/results.xml
+      - *unit_tests
 
       - name: Подпись (сертификат и профили App Store)
         script: |
