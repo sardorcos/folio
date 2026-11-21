@@ -68,10 +68,8 @@ struct FolioSettingsView: View {
                 Link(destination: AppConfig.privacyPolicyURL) {
                     Label("Политика конфиденциальности", systemImage: "hand.raised")
                 }
-                if let mail = AppConfig.supportMailURL {
-                    Link(destination: mail) {
-                        Label("Написать в поддержку", systemImage: "envelope")
-                    }
+                Link(destination: AppConfig.supportURL) {
+                    Label("Поддержка и обратная связь", systemImage: "questionmark.bubble")
                 }
                 LabeledContent {
                     Text(verbatim: AppConfig.appVersion)

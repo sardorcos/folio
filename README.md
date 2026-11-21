@@ -1,10 +1,12 @@
 # FOLIO 0.6.0
 
+В App Store: **FOLIO — PDF & Scan** (Bundle ID `com.neverlandplayworks.folio`). Политика конфиденциальности: [`PRIVACY.md`](PRIVACY.md), поддержка: [Issues](https://github.com/sardorcos/folio/issues).
+
 **FOLIO** — приложение для iPhone: объединение PDF, фото и сканы в PDF, распознавание текста (OCR), изменение порядка и поворот страниц, уменьшение размера и отправка готового файла. Принимает файлы из любого приложения через «Поделиться». Всё работает на устройстве, без серверов и сбора данных.
 
 Версия 0.6.0 — это 0.4.0 после аудита и исправлений для App Store (0.5.0) плюс OCR и расширение «Поделиться». Полный список изменений: [`CHANGELOG.md`](CHANGELOG.md). Шаги до публикации: [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md).
 
-> **Статус проверки.** Код написан и проверен статически (синтаксис Swift, структура Xcode-проекта, ресурсы). **Сборка в Xcode, unit-тесты и запуск на iPhone ещё не выполнялись**: в среде, где готовилась версия, нет macOS и Xcode. Первый шаг на Mac — собрать проект и прогнать тесты (см. ниже).
+> **Статус проверки.** Проект собирается в Codemagic (Xcode 26, iOS 26 SDK): приложение и расширение компилируются в Release, 36 unit-тестов проходят. Запуск на iPhone и проверка сканера, OCR и «Поделиться» на устройстве — через TestFlight.
 
 ## Требования
 
@@ -15,7 +17,7 @@
 ## Запуск
 
 1. Откройте `FOLIO.xcodeproj`.
-2. Проект FOLIO → **Build Settings** → **FOLIO_APP_BUNDLE_ID**: замените `com.example.folio` на свой идентификатор. Из него получаются Bundle ID всех targets (`<id>`, `<id>.share`, `<id>.tests`) и App Group (`group.<id>`).
+2. Bundle ID уже задан: Build Settings проекта → **FOLIO_APP_BUNDLE_ID** = `com.neverlandplayworks.folio`. Из него получаются Bundle ID всех targets (`<id>`, `<id>.share`, `<id>.tests`) и App Group (`group.<id>`); всё зарегистрировано в Apple Developer.
 3. Targets **FOLIO**, **FOLIOShare**, **FOLIOTests** → **Signing & Capabilities**: выберите свой **Team**. Xcode сам зарегистрирует App Group для приложения и расширения. Сами Bundle ID не меняйте: они берутся из `FOLIO_APP_BUNDLE_ID`.
 4. Выберите симулятор iPhone и нажмите **Run** (⌘R).
 5. **Product → Test** (⌘U) — 36 unit-тестов: импорт, экспорт, порядок и поворот страниц, сжатие, OCR, пароль PDF, общая папка «Поделиться», поиск по тексту, восстановление библиотеки, склонения. Тесты OCR пропускаются (Skipped), если Vision недоступен в симуляторе: проверьте их на iPhone.

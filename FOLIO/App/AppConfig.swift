@@ -1,19 +1,16 @@
 import Foundation
 
-#warning("Перед публикацией укажите свои privacyPolicyURL и supportEmail в AppConfig.swift, затем удалите эту строку")
-
-/// Данные, которые нужно заполнить перед публикацией в App Store.
+/// Публичные ссылки приложения. Те же адреса указываются в App Store Connect
+/// (App Information → Privacy Policy URL, версия → Support URL).
 enum AppConfig {
-    /// Публичная страница политики конфиденциальности. Тот же URL указывается в App Store Connect.
-    static let privacyPolicyURL = URL(string: "https://example.com/folio/privacy")!
+    /// Название в App Store («FOLIO» занято). На главном экране iPhone приложение подписано как «FOLIO».
+    static let appStoreName = "FOLIO — PDF & Scan"
 
-    /// Адрес поддержки. App Store Connect также требует Support URL.
-    static let supportEmail = "support@example.com"
+    /// Политика конфиденциальности: PRIVACY.md в публичном репозитории.
+    static let privacyPolicyURL = URL(string: "https://github.com/sardorcos/folio/blob/main/PRIVACY.md")!
 
-    static var supportMailURL: URL? {
-        let subject = "FOLIO \(appVersion)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "FOLIO"
-        return URL(string: "mailto:\(supportEmail)?subject=\(subject)")
-    }
+    /// Поддержка: обращения через GitHub Issues.
+    static let supportURL = URL(string: "https://github.com/sardorcos/folio/issues")!
 
     static var appVersion: String {
         let info = Bundle.main.infoDictionary

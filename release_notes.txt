@@ -1,0 +1,10 @@
+FOLIO — PDF & Scan beta (interface in Russian).
+
+Please test:
+• Add files → reorder, rotate, delete pages → Create PDF → Share / Save to Files.
+• Photos to PDF from your library; Scan with the camera.
+• Text recognition: search in "Files" by a word from a scanned page; Document → Text.
+• Share a PDF or photos from Mail/Photos/Files to FOLIO, then open FOLIO.
+• Password-protected PDFs, size reduction, dark mode, large text.
+
+Everything is processed on-device; no data is collected.

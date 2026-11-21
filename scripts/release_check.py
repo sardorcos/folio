@@ -203,8 +203,10 @@ def check_sources():
     if not swiftc:
         warnings.append('swiftc не найден — синтаксис Swift не проверялся (на Mac он есть вместе с Xcode)')
     config = (ROOT / 'FOLIO/App/AppConfig.swift').read_text(encoding='utf-8')
-    if 'example.com' in config:
-        warnings.append('AppConfig.swift: укажите реальные privacyPolicyURL и supportEmail')
+    if 'example.com' in config or '#warning' in config:
+        warnings.append('AppConfig.swift: укажите реальные privacyPolicyURL и supportURL')
+    if not (ROOT / 'PRIVACY.md').exists():
+        errors.append('Нет PRIVACY.md — на него ссылается AppConfig.privacyPolicyURL')
 
 
 check_project()

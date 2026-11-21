@@ -4,7 +4,7 @@
 
 ## 1. Сборка и тесты
 - [ ] Открыть `FOLIO.xcodeproj` в **Xcode 26+**. Если Xcode предложит обновить настройки проекта, согласиться.
-- [ ] Build Settings проекта → `FOLIO_APP_BUNDLE_ID`: свой идентификатор вместо `com.example.folio` (например, `ru.<компания>.folio`).
+- [x] Bundle ID `com.neverlandplayworks.folio` (Build Settings → `FOLIO_APP_BUNDLE_ID`), App ID и App Group зарегистрированы.
 - [ ] **Signing & Capabilities** (targets FOLIO, FOLIOShare, FOLIOTests): выбрать Team. Убедиться, что у FOLIO и FOLIOShare в App Groups отмечена одна и та же группа `group.<ваш id>`.
 - [ ] Собрать (⌘B). Исправить ошибки компиляции, если появятся: код проверен только статически.
 - [ ] Прогнать тесты (⌘U): 36 тестов должны пройти. Тесты OCR в симуляторе могут быть пропущены (Skipped); на iPhone они должны пройти. Если не проходит `testRussianPluralForms`, проверить, что `Localizable.xcstrings` входит в target FOLIO.
@@ -12,11 +12,12 @@
 - [ ] `python3 scripts/release_check.py`: без ❌.
 
 ## 2. Заполнить данные
-- [ ] `FOLIO/App/AppConfig.swift`: настоящий URL политики конфиденциальности и e-mail поддержки, затем удалить строку `#warning`.
-- [ ] Опубликовать политику конфиденциальности (например, на сайте или в GitHub Pages). Суть для FOLIO: данные не собираются, файлы обрабатываются и хранятся только на устройстве, доступ к камере нужен только для сканирования.
+- [x] Политика конфиденциальности: [`PRIVACY.md`](PRIVACY.md) (EN/RU), ссылка в `AppConfig.swift` и в настройках приложения. Если появится свой сайт — перенесите текст и обновите `AppConfig.privacyPolicyURL`.
+- [x] Поддержка: GitHub Issues (`AppConfig.supportURL`).
 - [ ] Заменить временную иконку `AppIcon.png` финальной: 1024×1024, PNG, без прозрачности и скруглений. По желанию добавить тёмный и tinted варианты.
 - [ ] Версия: `MARKETING_VERSION` (например, 1.0.0) и `CURRENT_PROJECT_VERSION` (увеличивать при каждой загрузке).
-- [ ] Проверить, что название «FOLIO» свободно в App Store; при необходимости добавить подзаголовок (например, «PDF, фото и сканы»).
+- [x] Название в App Store: **FOLIO — PDF & Scan** («FOLIO» занято). Подпись на главном экране — «FOLIO» (`CFBundleDisplayName`), это допустимо.
+- [ ] Основной язык карточки — English (U.S.), а интерфейс приложения на русском. Перед публикацией: добавить в App Store Connect локализацию **Russian** с русским описанием и скриншотами; для англоязычной витрины — либо перевести интерфейс (String Catalog, язык en), либо явно написать в описании, что интерфейс на русском.
 
 ## 3. Ручная проверка на iPhone
 - [ ] Главный сценарий: Добавить файлы → Сборка → Создать PDF → Поделиться → Сохранить в «Файлы». Открыть результат в другом приложении.
@@ -42,8 +43,9 @@
 - [ ] Собрать отзывы, исправить, повторить архив с новым build number.
 
 ## 5. App Store Connect
-- [ ] Новое приложение: Bundle ID, основной язык — русский, категория «Производительность» (дополнительно «Бизнес» или «Утилиты»).
-- [ ] **Privacy Policy URL** и **Support URL** обязательны.
+- [x] Карточка создана: «FOLIO — PDF & Scan», Bundle ID `com.neverlandplayworks.folio`, SKU `folio-ios`.
+- [ ] Категория «Productivity» (дополнительно «Business» или «Utilities»).
+- [ ] **Privacy Policy URL**: `https://github.com/sardorcos/folio/blob/main/PRIVACY.md`; **Support URL**: `https://github.com/sardorcos/folio/issues`.
 - [ ] **App Privacy**: «Data Not Collected» (FOLIO не собирает данных). Ответ должен совпадать с `PrivacyInfo.xcprivacy`.
 - [ ] **Age Rating**: заполнить анкету (для FOLIO все ответы «Нет» → 4+).
 - [ ] Экспортный контроль: ответ уже задан в Info.plist (`ITSAppUsesNonExemptEncryption = NO`).
