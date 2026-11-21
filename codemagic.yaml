@@ -70,9 +70,12 @@ workflows:
       app_store_connect: monetniy-mir-asc
     environment:
       xcode: latest
-      groups:
-        # CERTIFICATE_PRIVATE_KEY — закрытый ключ сертификата Apple Distribution (secure).
-        - folio_signing
+      # Командный сертификат Apple Distribution из Codemagic (Code signing identities).
+      # Новый сертификат создать нельзя: у команды исчерпан лимит Distribution-сертификатов.
+      # Профили для FOLIO создаёт scripts/asc_profiles.py под этот сертификат.
+      ios_signing:
+        certificates:
+          - monetniy-mir-distribution
       vars:
         XCODE_PROJECT: FOLIO.xcodeproj
         XCODE_SCHEME: FOLIO
@@ -114,16 +117,18 @@ workflows:
           echo "Номер сборки: $NEW_BUILD"
           perl -pi -e "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = $NEW_BUILD;/g" "$PBX"
 
-      - *unit_tests
 
       - name: Подпись (сертификат и профили App Store)
         script: |
           set -euo pipefail
-          keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
-          app-store-connect fetch-signing-files "$BUNDLE_ID.share" --type IOS_APP_STORE --create
-          keychain add-certificates
+          if [ ! -x /tmp/ascenv/bin/python ]; then
+            python3 -m venv /tmp/ascenv
+            /tmp/ascenv/bin/pip install --quiet --disable-pip-version-check pyjwt cryptography
+          fi
+          /tmp/ascenv/bin/python scripts/asc_profiles.py "$BUNDLE_ID" "$BUNDLE_ID.share"
           xcode-project use-profiles
+
+      - *unit_tests
 
       - name: Сборка IPA
         script: |
