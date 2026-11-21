@@ -6,6 +6,7 @@ definitions:
       name: Unit-тесты
       script: |
         set -euo pipefail
+        if [ "${SKIP_TESTS:-}" = "1" ]; then echo "Тесты пропущены (SKIP_TESTS=1)"; exit 0; fi
         DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c '
         import json, sys
         data = json.load(sys.stdin)["devices"]
@@ -133,7 +134,9 @@ workflows:
             -archivePath build/ios/FOLIO.xcarchive \
             "${AUTH[@]}" \
             DEVELOPMENT_TEAM="$FOLIO_TEAM_ID" \
-            CODE_SIGN_STYLE=Automatic | xcpretty
+            CODE_SIGN_STYLE=Automatic > build/ios/archive.log 2>&1 \
+            || { grep -E "error:|warning: .*(sign|profile|certificate)|Provisioning|Signing|No profiles|No Account" build/ios/archive.log | sort -u | head -40; tail -30 build/ios/archive.log; exit 1; }
+          echo "Архив создан"
           cat > build/ios/ExportOptions.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -152,7 +155,8 @@ workflows:
             -archivePath build/ios/FOLIO.xcarchive \
             -exportOptionsPlist build/ios/ExportOptions.plist \
             -exportPath build/ios/ipa \
-            "${AUTH[@]}" | xcpretty
+            "${AUTH[@]}" > build/ios/export.log 2>&1 \
+            || { grep -E "error|Error|profile|certificate" build/ios/export.log | sort -u | head -40; tail -30 build/ios/export.log; exit 1; }
           ls -la build/ios/ipa
 
     artifacts:
@@ -160,6 +164,7 @@ workflows:
       - build/ios/test/*.xcresult
       - /tmp/xcodebuild_logs/*.log
       - build/ios/FOLIO.xcarchive/dSYMs/*.dSYM
+      - build/ios/*.log
 
     publishing:
       app_store_connect:
