@@ -1,42 +1,33 @@
-import SwiftUI
 import PDFKit
+import SwiftUI
+import UIKit
 
 struct FolioDocumentView: View {
     @ObservedObject var store: FolioStore
     let document: FolioDocument
     @State private var renamePresented = false
     @State private var newName = ""
-    @State private var shareItem: FolioShareItem?
-    @State private var cleanupURL: URL?
+    @State private var deletePresented = false
+    @State private var shareURL: URL?
 
     private var latest: FolioDocument {
-        store.documents.first(where: { $0.id == document.id }) ?? document
+        store.document(id: document.id) ?? document
     }
 
     var body: some View {
         VStack(spacing: 0) {
             FolioPDFPreview(url: store.localURL(for: document))
                 .background(Color(uiColor: .systemGray6))
-            HStack(spacing: 10) {
-                Button {
-                    store.newDraftFrom(latest)
-                } label: {
-                    Label("Изменить страницы", systemImage: "square.stack")
-                }
-                .buttonStyle(FolioSecondaryButtonStyle())
-                Button {
-                    prepareShare()
-                } label: {
-                    Label("Поделиться", systemImage: "square.and.arrow.up")
-                }
-                .buttonStyle(FolioPrimaryButtonStyle())
+                .accessibilityLabel(Text("Просмотр документа: \(FolioPlural.pages(latest.pageCount))"))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { editButton; shareButton }
+                VStack(spacing: 10) { editButton; shareButton }
             }
             .padding(14)
-            .background(.regularMaterial)
+            .background(.bar)
         }
-        .navigationTitle(latest.title)
+        .navigationTitle(Text(verbatim: latest.title))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -49,38 +40,56 @@ struct FolioDocumentView: View {
                            systemImage: latest.isFavorite ? "star.slash" : "star") {
                         store.toggleFavorite(latest)
                     }
-                    Button("Поделиться", systemImage: "square.and.arrow.up") {
-                        prepareShare()
+                    Divider()
+                    Button("Удалить", systemImage: "trash", role: .destructive) {
+                        deletePresented = true
                     }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .frame(width: 44, height: 44)
+                    Label("Действия с документом", systemImage: "ellipsis.circle")
                 }
-                .accessibilityLabel("Действия с документом")
             }
         }
-        .alert("Новое имя файла", isPresented: $renamePresented) {
+        .task(id: latest.title) {
+            shareURL = try? store.makeShareCopy(for: latest)
+        }
+        .alert("Новое название", isPresented: $renamePresented) {
             TextField("Название", text: $newName)
             Button("Сохранить") { store.rename(latest, to: newName) }
             Button("Отмена", role: .cancel) { }
         } message: {
-            Text("Название изменится в библиотеке и при отправке. Исходные страницы не изменятся.")
+            Text("Название изменится в библиотеке и в имени файла при отправке.")
         }
-        .sheet(item: $shareItem, onDismiss: {
-            store.removeShareCopy(cleanupURL)
-            cleanupURL = nil
-        }) { item in
-            FolioActivitySheet(items: [item.url])
+        .confirmationDialog("Удалить документ?", isPresented: $deletePresented, titleVisibility: .visible) {
+            Button("Удалить", role: .destructive) {
+                store.deleteDocuments([document.id])
+            }
+        } message: {
+            Text("Файл будет удалён из FOLIO без возможности восстановления.")
         }
     }
 
-    private func prepareShare() {
-        do {
-            let url = try store.makeShareCopy(for: latest)
-            cleanupURL = url
-            shareItem = FolioShareItem(url: url)
-        } catch {
-            store.alertMessage = error.localizedDescription
+    private var editButton: some View {
+        Button {
+            store.newDraftFrom(latest)
+        } label: {
+            Label("Изменить страницы", systemImage: "square.stack")
+        }
+        .buttonStyle(FolioSecondaryButtonStyle())
+    }
+
+    @ViewBuilder
+    private var shareButton: some View {
+        if let shareURL {
+            ShareLink(item: shareURL, preview: SharePreview(latest.title + ".pdf")) {
+                Label("Поделиться", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(FolioPrimaryButtonStyle())
+        } else {
+            Button { } label: {
+                Label("Поделиться", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(FolioPrimaryButtonStyle())
+            .disabled(true)
         }
     }
 }
@@ -90,7 +99,7 @@ struct FolioPDFPreview: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PDFView {
         let viewer = PDFView()
-        viewer.backgroundColor = UIColor.systemGray6
+        viewer.backgroundColor = .systemGray6
         viewer.autoScales = true
         viewer.displayMode = .singlePageContinuous
         viewer.displaysPageBreaks = true
@@ -103,19 +112,4 @@ struct FolioPDFPreview: UIViewRepresentable {
             viewer.document = PDFDocument(url: url)
         }
     }
-}
-
-struct FolioShareItem: Identifiable {
-    let id = UUID()
-    let url: URL
-}
-
-struct FolioActivitySheet: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) { }
 }

@@ -2,7 +2,12 @@ import SwiftUI
 
 struct FolioHomeView: View {
     @ObservedObject var store: FolioStore
-    private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var columns: [GridItem] {
+        let count = dynamicTypeSize.isAccessibilitySize ? 1 : 2
+        return Array(repeating: GridItem(.flexible(), spacing: 10), count: count)
+    }
 
     var body: some View {
         ScrollView {
@@ -20,6 +25,7 @@ struct FolioHomeView: View {
             .padding(.bottom, 30)
         }
         .background(FolioTheme.canvas)
+        .toolbar(.hidden, for: .navigationBar)
         .accessibilityIdentifier("folio.home")
     }
 
@@ -27,7 +33,7 @@ struct FolioHomeView: View {
         HStack(spacing: 11) {
             FolioBrandMark(size: 40)
             VStack(alignment: .leading, spacing: 2) {
-                Text("FOLIO")
+                Text(verbatim: "FOLIO")
                     .font(.title3.weight(.heavy))
                     .tracking(0.7)
                 Text("PDF И ДОКУМЕНТЫ")
@@ -35,6 +41,7 @@ struct FolioHomeView: View {
                     .tracking(1.0)
                     .foregroundStyle(.secondary)
             }
+            .accessibilityElement(children: .combine)
             Spacer()
             Button {
                 store.tab = .settings
@@ -65,23 +72,33 @@ struct FolioHomeView: View {
     }
 
     private var mainActions: some View {
-        HStack(spacing: 10) {
-            Button {
-                store.openImporter(.documents)
-            } label: {
-                Label("Добавить файлы", systemImage: "plus")
-            }
-            .buttonStyle(FolioPrimaryButtonStyle())
-            .accessibilityIdentifier("folio.addFiles")
-
-            Button {
-                store.showingScanner = true
-            } label: {
-                Label("Сканировать", systemImage: "viewfinder")
-            }
-            .buttonStyle(FolioSecondaryButtonStyle())
-            .accessibilityIdentifier("folio.scan")
+        // На крупном шрифте кнопки встают друг под другом, а не обрезаются.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) { addButton; scanButton }
+            VStack(spacing: 10) { addButton; scanButton }
         }
+    }
+
+    private var addButton: some View {
+        Button {
+            store.startTask(.documents)
+        } label: {
+            Label("Добавить файлы", systemImage: "plus")
+                .lineLimit(1)
+        }
+        .buttonStyle(FolioPrimaryButtonStyle())
+        .accessibilityIdentifier("folio.addFiles")
+    }
+
+    private var scanButton: some View {
+        Button {
+            store.startTask(.scan)
+        } label: {
+            Label("Сканировать", systemImage: "viewfinder")
+                .lineLimit(1)
+        }
+        .buttonStyle(FolioSecondaryButtonStyle())
+        .accessibilityIdentifier("folio.scan")
     }
 
     private var tools: some View {
@@ -89,18 +106,16 @@ struct FolioHomeView: View {
             FolioSectionHeader(title: "Что нужно сделать?")
             LazyVGrid(columns: columns, spacing: 10) {
                 FolioToolTile(name: "Объединить PDF", detail: "Несколько файлов в один", symbol: "doc.on.doc") {
-                    store.openImporter(.documents)
+                    store.startTask(.documents)
                 }
-                FolioToolTile(name: "Фото в PDF", detail: "Изображения в документ", symbol: "photo.on.rectangle") {
-                    store.openImporter(.photographs)
+                FolioToolTile(name: "Фото в PDF", detail: "Снимки из галереи", symbol: "photo.on.rectangle") {
+                    store.startTask(.photographs)
                 }
                 FolioToolTile(name: "Изменить страницы", detail: "Порядок и поворот", symbol: "rectangle.3.group") {
-                    if store.draft.isEmpty { store.openImporter(.editing) }
-                    else { store.continueDraft() }
+                    store.editPages()
                 }
-                FolioToolTile(name: "Уменьшить размер", detail: "Фото и сканы", symbol: "arrow.down.right.and.arrow.up.left") {
-                    if store.draft.isEmpty { store.openImporter(.compression) }
-                    else { store.exportQuality = .smallerPhotos; store.tab = .home; store.path = [.composer, .export] }
+                FolioToolTile(name: "Уменьшить размер", detail: "Фото, сканы и PDF", symbol: "arrow.down.right.and.arrow.up.left") {
+                    store.startTask(.compression)
                 }
             }
         }
@@ -112,26 +127,30 @@ struct FolioHomeView: View {
             Button { store.continueDraft() } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "doc.text.image")
-                        .font(.system(size: 29, weight: .light))
+                        .font(.title)
                         .foregroundStyle(FolioTheme.blue)
                         .frame(width: 52, height: 66)
                         .background(FolioTheme.blueSoft, in: RoundedRectangle(cornerRadius: 12))
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Незавершённый PDF")
                             .font(.headline).foregroundStyle(.primary)
-                        Text("\(store.draftSourceCount) документа · \(store.draft.count) страниц")
+                        Text(verbatim: "\(FolioPlural.documents(store.draftSourceCount)) · \(FolioPlural.pages(store.draft.count))")
                             .font(.footnote).foregroundStyle(.secondary)
                         Text("Продолжить сборку")
                             .font(.footnote.weight(.semibold)).foregroundStyle(FolioTheme.blue)
                     }
+                    .multilineTextAlignment(.leading)
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right")
                         .font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                 }
                 .padding(14)
                 .background(FolioTheme.card, in: RoundedRectangle(cornerRadius: FolioTheme.corner))
             }
             .buttonStyle(FolioQuietButtonStyle())
+            .accessibilityElement(children: .combine)
         }
     }
 
@@ -140,26 +159,22 @@ struct FolioHomeView: View {
             FolioSectionHeader(title: "Недавние", trailing: "Все файлы") { store.tab = .files }
             if store.recentDocuments.isEmpty {
                 VStack(spacing: 12) {
-                    HStack(spacing: 7) {
-                        smallStep("1", "Файлы")
-                        Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-                        smallStep("2", "Страницы")
-                        Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-                        smallStep("3", "PDF")
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 7) { steps(separator: true) }
+                        VStack(alignment: .leading, spacing: 8) { steps(separator: false) }
                     }
                     Text("Здесь появятся ваши готовые документы")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
-                .padding(.vertical, 19)
+                .padding(19)
                 .frame(maxWidth: .infinity)
                 .background(FolioTheme.card, in: RoundedRectangle(cornerRadius: FolioTheme.corner))
             } else {
                 VStack(spacing: 0) {
                     ForEach(store.recentDocuments) { document in
-                        Button {
-                            store.path = [.document(document.id)]
-                        } label: {
+                        NavigationLink(value: FolioRoute.document(document.id)) {
                             FolioFileRow(document: document)
                         }
                         .buttonStyle(.plain)
@@ -172,24 +187,35 @@ struct FolioHomeView: View {
         }
     }
 
-    private func smallStep(_ number: String, _ name: String) -> some View {
+    @ViewBuilder
+    private func steps(separator: Bool) -> some View {
+        smallStep("1", "Файлы")
+        if separator { chevron }
+        smallStep("2", "Страницы")
+        if separator { chevron }
+        smallStep("3", "PDF")
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.right").foregroundStyle(.tertiary).accessibilityHidden(true)
+    }
+
+    private func smallStep(_ number: String, _ name: LocalizedStringKey) -> some View {
         HStack(spacing: 5) {
-            Text(number)
+            Text(verbatim: number)
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(FolioTheme.blue)
-                .frame(width: 20, height: 20)
+                .frame(minWidth: 20, minHeight: 20)
                 .background(FolioTheme.blueSoft, in: Circle())
             Text(name).font(.caption.weight(.medium))
         }
     }
 
     private var privacyLine: some View {
-        HStack(spacing: 7) {
-            Image(systemName: "lock.shield")
-            Text("Обработка документов на вашем iPhone")
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity)
+        Label("Документы обрабатываются только на вашем iPhone", systemImage: "lock.shield")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
     }
 }

@@ -1,80 +1,106 @@
+import PhotosUI
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
-import VisionKit
 
 struct FolioRootView: View {
     @ObservedObject var store: FolioStore
+    @State private var password = ""
 
-    private var importTypes: [UTType] {
-        store.importIntent == .photographs ? [.jpeg, .png, .heic] : [.pdf, .jpeg, .png, .heic]
+    private var passwordTitle: LocalizedStringKey {
+        if store.passwordRequest?.wrongAttempt == true { return "Неверный пароль" }
+        return "PDF защищён паролем"
     }
 
     var body: some View {
-        NavigationStack(path: $store.path) {
-            TabView(selection: $store.tab) {
+        TabView(selection: $store.tab) {
+            NavigationStack(path: $store.homePath) {
                 FolioHomeView(store: store)
-                    .tabItem { Label("Главная", systemImage: "house") }
-                    .tag(FolioTab.home)
-
-                FolioLibraryView(store: store)
-                    .tabItem { Label("Файлы", systemImage: "folder") }
-                    .tag(FolioTab.files)
-
-                FolioTemplatesView(store: store)
-                    .tabItem { Label("Шаблоны", systemImage: "square.stack") }
-                    .tag(FolioTab.templates)
-
-                FolioSettingsView(store: store)
-                    .tabItem { Label("Настройки", systemImage: "gearshape") }
-                    .tag(FolioTab.settings)
-            }
-            .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: FolioRoute.self) { route in
-                switch route {
-                case .composer:
-                    FolioComposerView(store: store)
-                case .export:
-                    FolioExportView(store: store)
-                case .result:
-                    FolioResultView(store: store)
-                case .document(let id):
-                    if let document = store.documents.first(where: { $0.id == id }) {
-                        FolioDocumentView(store: store, document: document)
-                    } else {
-                        ContentUnavailableView("Документ не найден", systemImage: "doc.questionmark")
+                    .navigationDestination(for: FolioRoute.self) { route in
+                        FolioRouteDestination(store: store, route: route)
                     }
-                }
             }
+            .tabItem { Label("Главная", systemImage: "house") }
+            .tag(FolioTab.home)
+
+            NavigationStack(path: $store.filesPath) {
+                FolioLibraryView(store: store)
+                    .navigationDestination(for: FolioRoute.self) { route in
+                        FolioRouteDestination(store: store, route: route)
+                    }
+            }
+            .tabItem { Label("Файлы", systemImage: "folder") }
+            .tag(FolioTab.files)
+
+            NavigationStack {
+                FolioTemplatesView(store: store)
+            }
+            .tabItem { Label("Шаблоны", systemImage: "square.stack") }
+            .tag(FolioTab.templates)
+
+            NavigationStack {
+                FolioSettingsView(store: store)
+            }
+            .tabItem { Label("Настройки", systemImage: "gearshape") }
+            .tag(FolioTab.settings)
         }
-        .confirmationDialog("Есть незавершённый PDF", isPresented: $store.showingTaskChoice) {
-            Button("Добавить в текущий комплект") { store.chooseAppendToDraft() }
-            Button("Создать новый комплект") { store.chooseNewDraft() }
+        .confirmationDialog("Есть незавершённый PDF", isPresented: $store.showingTaskChoice, titleVisibility: .visible) {
+            Button("Добавить к текущему PDF") { store.chooseAppendToDraft() }
+            Button("Начать новый PDF") { store.chooseNewDraft() }
             Button("Отмена", role: .cancel) { }
         } message: {
-            Text("Выберите, нужно ли сохранить текущий порядок страниц или начать новый проект. Черновик не будет удалён до успешного импорта.")
+            Text("Текущий набор страниц не удалится, пока новые файлы не будут успешно добавлены.")
         }
-        .confirmationDialog("В текущем комплекте уже есть страницы", isPresented: $store.showingEditChoice) {
-            Button("Добавить документ к комплекту") { store.chooseAddEditorDocument() }
-            Button("Редактировать только выбранный документ") { store.chooseReplaceEditorDocument() }
+        .confirmationDialog("В текущем PDF уже есть страницы", isPresented: $store.showingEditChoice, titleVisibility: .visible) {
+            Button("Добавить документ к текущему PDF") { store.chooseAddEditorDocument() }
+            Button("Редактировать только этот документ") { store.chooseReplaceEditorDocument() }
             Button("Отмена", role: .cancel) { }
         } message: {
-            Text("Исходные документы останутся в библиотеке. Выберите действие с незавершённым PDF.")
+            Text("Документы в библиотеке не изменятся. Предыдущий набор страниц можно вернуть кнопкой «Отменить».")
         }
         .fileImporter(isPresented: $store.showingImporter,
-                      allowedContentTypes: importTypes,
+                      allowedContentTypes: [.pdf, .image],
                       allowsMultipleSelection: true) { result in
             store.handleImporter(result)
         }
-        .sheet(isPresented: $store.showingScanner) {
-            if VNDocumentCameraViewController.isSupported {
-                FolioScannerView { data in
-                    store.importScannedImages(data)
+        .photosPicker(isPresented: $store.showingPhotoPicker,
+                      selection: $store.photoSelection,
+                      maxSelectionCount: FolioLimits.draftPages,
+                      selectionBehavior: .ordered,
+                      matching: .images)
+        .onChange(of: store.photoSelection) { _, items in
+            store.handlePhotoSelection(items)
+        }
+        .fullScreenCover(isPresented: $store.showingScanner) {
+            FolioScannerView(onComplete: { store.importScannedImages($0) },
+                             onCancel: { store.scannerCancelled() },
+                             onError: { store.scannerFailed($0) })
+                .ignoresSafeArea()
+        }
+        .alert("Нет доступа к камере", isPresented: $store.showingCameraDenied) {
+            Button("Открыть Настройки") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
                 }
-            } else {
-                ContentUnavailableView("Камера недоступна", systemImage: "camera.fill",
-                                       description: Text("Сканирование работает на совместимом iPhone. Вместо камеры можно добавить фотографию из файлов."))
-                    .presentationDetents([.medium])
             }
+            Button("Отмена", role: .cancel) { }
+        } message: {
+            Text("Разрешите FOLIO использовать камеру в Настройках, чтобы сканировать бумажные документы.")
+        }
+        .alert(passwordTitle,
+               isPresented: Binding(get: { store.passwordRequest != nil }, set: { _ in }),
+               presenting: store.passwordRequest) { _ in
+            SecureField("Пароль", text: $password)
+            Button("Открыть") {
+                store.submitPassword(password)
+                password = ""
+            }
+            Button("Пропустить", role: .cancel) {
+                store.skipPassword()
+                password = ""
+            }
+        } message: { request in
+            Text("Введите пароль для «\(request.fileName)». В библиотеке FOLIO сохранится копия без пароля, оригинал не изменится.")
         }
         .alert("FOLIO", isPresented: Binding(get: { store.alertMessage != nil },
                                              set: { if !$0 { store.alertMessage = nil } })) {
@@ -84,25 +110,63 @@ struct FolioRootView: View {
         }
         .overlay {
             if store.isProcessing {
-                ZStack {
-                    Color.black.opacity(0.18).ignoresSafeArea()
-                    VStack(spacing: 15) {
-                        ProgressView().tint(FolioTheme.blue).controlSize(.large)
-                        Text(store.processingLabel)
-                            .font(.headline)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(28)
-                    .frame(maxWidth: 290)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+                FolioProcessingOverlay(label: store.processingLabel) {
+                    store.cancelProcessing()
                 }
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.updatesFrequently)
             }
         }
     }
 }
 
-#Preview("FOLIO · Главный экран") {
+/// Экран для маршрута навигации. Общий для вкладок «Главная» и «Файлы».
+struct FolioRouteDestination: View {
+    @ObservedObject var store: FolioStore
+    let route: FolioRoute
+
+    var body: some View {
+        switch route {
+        case .composer:
+            FolioComposerView(store: store)
+        case .export:
+            FolioExportView(store: store)
+        case .result:
+            FolioResultView(store: store)
+        case .document(let id):
+            if let document = store.document(id: id) {
+                FolioDocumentView(store: store, document: document)
+            } else {
+                ContentUnavailableView("Документ не найден", systemImage: "doc.questionmark",
+                                       description: Text("Возможно, он был удалён."))
+            }
+        }
+    }
+}
+
+struct FolioProcessingOverlay: View {
+    let label: String
+    let onCancel: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.25).ignoresSafeArea()
+            VStack(spacing: 16) {
+                ProgressView().controlSize(.large)
+                Text(label)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+                Button("Отменить", role: .cancel, action: onCancel)
+                    .buttonStyle(.bordered)
+            }
+            .padding(28)
+            .frame(maxWidth: 300)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(label)
+        }
+        .accessibilityAddTraits(.isModal)
+    }
+}
+
+#Preview("FOLIO") {
     FolioRootView(store: FolioStore())
 }

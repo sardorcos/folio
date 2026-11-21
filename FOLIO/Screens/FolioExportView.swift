@@ -2,7 +2,10 @@ import SwiftUI
 
 struct FolioExportView: View {
     @ObservedObject var store: FolioStore
-    @State private var filename = "Новый документ"
+    @State private var filename = ""
+    @FocusState private var nameFocused: Bool
+
+    private let targets: [Int?] = [nil, 2, 5, 10]
 
     var body: some View {
         ScrollView {
@@ -11,83 +14,108 @@ struct FolioExportView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Как сохранить документ?")
                         .font(.title2.weight(.bold))
-                    Text("\(store.draft.count) страниц · один PDF")
+                        .accessibilityAddTraits(.isHeader)
+                    Text(verbatim: "\(FolioPlural.pages(store.draft.count)) · PDF")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Название файла").font(.headline)
                     TextField("Например: Документы для клиента", text: $filename)
                         .textInputAutocapitalization(.sentences)
-                        .textFieldStyle(.roundedBorder)
+                        .submitLabel(.done)
+                        .focused($nameFocused)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 48)
+                        .background(FolioTheme.card, in: RoundedRectangle(cornerRadius: 12))
+                        .accessibilityIdentifier("folio.exportName")
                 }
+
                 VStack(alignment: .leading, spacing: 11) {
                     Text("Качество PDF").font(.headline)
                     ForEach(PDFQuality.allCases) { quality in
-                        Button {
+                        FolioChoiceRow(title: quality.title, subtitle: quality.subtitle,
+                                       isSelected: store.exportQuality == quality) {
                             store.exportQuality = quality
-                        } label: {
-                            HStack(spacing: 11) {
-                                Image(systemName: store.exportQuality == quality ? "largecircle.fill.circle" : "circle")
-                                    .font(.title3)
-                                    .foregroundStyle(FolioTheme.blue)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(quality.title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                                    Text(quality.subtitle).font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                            }
-                            .padding(14)
-                            .background(FolioTheme.card, in: RoundedRectangle(cornerRadius: 15))
                         }
-                        .buttonStyle(.plain)
                     }
                 }
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Желаемый размер").font(.headline)
-                    HStack(spacing: 8) {
-                        targetChip(nil, title: "Без лимита")
-                        targetChip(2, title: "2 МБ")
-                        targetChip(5, title: "5 МБ")
-                        targetChip(10, title: "10 МБ")
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 8)], spacing: 8) {
+                        ForEach(targets, id: \.self) { size in
+                            targetChip(size)
+                        }
                     }
+                    Text(targetExplanation)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                FolioInlineMessage(symbol: "info.circle",
-                                   title: "Размер файла проверим после создания",
-                                   subtitle: "Для обычных PDF текст и графика сохраняются. Уменьшение размера не гарантируется.")
             }
             .padding(18)
         }
+        .scrollDismissesKeyboard(.interactively)
         .background(FolioTheme.canvas)
         .navigationTitle("Настройки PDF")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
+        .onAppear {
+            if filename.isEmpty { filename = store.suggestedExportName }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Button {
+                nameFocused = false
                 store.exportDraft(name: filename)
             } label: {
                 Label("Создать PDF", systemImage: "checkmark.circle")
             }
             .buttonStyle(FolioPrimaryButtonStyle())
-            .disabled(store.isProcessing)
+            .disabled(store.isProcessing || store.draft.isEmpty)
+            .accessibilityIdentifier("folio.createPDF")
             .padding(.horizontal, 18)
             .padding(.top, 12)
             .padding(.bottom, 8)
-            .background(.regularMaterial)
+            .background(.bar)
         }
     }
 
-    private func targetChip(_ size: Int?, title: String) -> some View {
-        Button {
+    private var targetExplanation: LocalizedStringKey {
+        guard store.targetSizeMB != nil else {
+            return "Размер не ограничен. Фактический размер покажем после создания."
+        }
+        switch store.exportQuality {
+        case .original:
+            return "В режиме «Исходное качество» страницы не сжимаются: FOLIO только предупредит, если файл получится больше."
+        case .smallerPhotos:
+            return "FOLIO попробует несколько уровней сжатия фото и сканов, чтобы уложиться в размер. Если не получится, покажем фактический результат."
+        case .maximum:
+            return "FOLIO попробует несколько уровней сжатия всех страниц, чтобы уложиться в размер."
+        }
+    }
+
+    private func targetChip(_ size: Int?) -> some View {
+        let isSelected = store.targetSizeMB == size
+        return Button {
             store.targetSizeMB = size
         } label: {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(store.targetSizeMB == size ? .white : FolioTheme.blue)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(store.targetSizeMB == size ? FolioTheme.blue : FolioTheme.blueSoft,
-                            in: RoundedRectangle(cornerRadius: 11))
+            Group {
+                if let size {
+                    Text("\(size) МБ")
+                } else {
+                    Text("Без лимита")
+                }
+            }
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .foregroundStyle(isSelected ? .white : FolioTheme.blue)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(isSelected ? FolioTheme.fill : FolioTheme.blueSoft,
+                        in: RoundedRectangle(cornerRadius: 11))
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }

@@ -2,9 +2,12 @@ import SwiftUI
 import VisionKit
 import UIKit
 
+/// Обёртка над системной камерой документов. Закрытие управляется снаружи (через состояние хранилища),
+/// чтобы не зависеть от environment-значений внутри Coordinator.
 struct FolioScannerView: UIViewControllerRepresentable {
-    @Environment(\.dismiss) private var dismiss
-    let onComplete: ([Data]) -> Void
+    let onComplete: ([UIImage]) -> Void
+    let onCancel: () -> Void
+    let onError: (Error) -> Void
 
     func makeUIViewController(context: Context) -> VNDocumentCameraViewController {
         let camera = VNDocumentCameraViewController()
@@ -12,30 +15,30 @@ struct FolioScannerView: UIViewControllerRepresentable {
         return camera
     }
 
-    func updateUIViewController(_ camera: VNDocumentCameraViewController, context: Context) { }
+    func updateUIViewController(_ camera: VNDocumentCameraViewController, context: Context) {
+        context.coordinator.parent = self
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
     final class Coordinator: NSObject, VNDocumentCameraViewControllerDelegate {
-        let parent: FolioScannerView
+        var parent: FolioScannerView
         init(parent: FolioScannerView) { self.parent = parent }
 
         func documentCameraViewController(_ controller: VNDocumentCameraViewController,
                                           didFinishWith scan: VNDocumentCameraScan) {
-            let images = (0..<scan.pageCount).compactMap { index in
-                scan.imageOfPage(at: index).jpegData(compressionQuality: 0.90)
-            }
-            parent.dismiss()
+            // Только извлекаем изображения; сжатие и запись PDF выполняются вне главного потока.
+            let images = (0..<scan.pageCount).map { scan.imageOfPage(at: $0) }
             parent.onComplete(images)
         }
 
         func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
-            parent.dismiss()
+            parent.onCancel()
         }
 
         func documentCameraViewController(_ controller: VNDocumentCameraViewController,
                                           didFailWithError error: Error) {
-            parent.dismiss()
+            parent.onError(error)
         }
     }
 }

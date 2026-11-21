@@ -1,222 +1,543 @@
+import AVFoundation
 import Foundation
+import PhotosUI
 import SwiftUI
+import UIKit
+import VisionKit
 
 @MainActor
 final class FolioStore: ObservableObject {
+
+    // MARK: - Состояние
+
     @Published private(set) var documents: [FolioDocument] = []
     @Published private(set) var draft: [FolioDraftPage] = []
-    @Published var path: [FolioRoute] = []
+    @Published private(set) var templates: [FolioSavedWorkflow] = []
+
     @Published var tab: FolioTab = .home
+    @Published var homePath: [FolioRoute] = []
+    @Published var filesPath: [FolioRoute] = []
+
     @Published var showingImporter = false
+    @Published var showingPhotoPicker = false
+    @Published var photoSelection: [PhotosPickerItem] = []
     @Published var showingScanner = false
+    @Published var showingCameraDenied = false
     @Published var showingTaskChoice = false
     @Published var showingEditChoice = false
-    @Published var isProcessing = false
-    @Published var processingLabel = ""
+    @Published private(set) var passwordRequest: FolioPasswordRequest?
+
+    @Published private(set) var isProcessing = false
+    @Published private(set) var processingLabel = ""
     @Published var alertMessage: String?
+
     @Published var exportQuality: PDFQuality = .original
-    @Published var targetSizeMB: Int? = 5
-    @Published var lastResultID: UUID?
+    @Published var targetSizeMB: Int?
+    @Published private(set) var lastResultID: UUID?
+    /// Пояснение к последнему результату (например, «цель по размеру не достигнута»).
+    @Published private(set) var lastExportNote: String?
+    @Published private(set) var canUndo = false
+
     private(set) var importIntent: ImportIntent = .documents
 
-    private var undoStack: [[FolioDraftPage]] = []
-    private var pendingIntent: ImportIntent?
+    private var undoStack: [[FolioDraftPage]] = [] {
+        didSet { canUndo = !undoStack.isEmpty }
+    }
     private var pendingEditorDocument: FolioDocument?
     private var replaceDraftOnImport = false
+    private var pendingPasswordURLs: [URL] = []
+    private var currentTask: Task<Void, Never>?
+    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+
+    private let root: URL
     private let folder: URL
     private let indexURL: URL
+    private let tempFolder: URL
+    private let defaults: UserDefaults
+    private static let templatesKey = "folio.savedWorkflows"
 
-    init() {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        folder = support.appendingPathComponent("FOLIO/Files", isDirectory: true)
-        indexURL = support.appendingPathComponent("FOLIO/index.json")
+    // MARK: - Запуск
+
+    /// - Parameters:
+    ///   - baseURL: каталог хранилища. По умолчанию `Application Support/FOLIO` (как в 0.4.0, для миграции).
+    ///   - defaults: хранилище шаблонов. В тестах передаётся отдельный suite.
+    init(baseURL: URL? = nil, defaults: UserDefaults = .standard) {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        root = baseURL ?? support.appendingPathComponent("FOLIO", isDirectory: true)
+        folder = root.appendingPathComponent("Files", isDirectory: true)
+        indexURL = root.appendingPathComponent("index.json")
+        tempFolder = root.appendingPathComponent("Temp", isDirectory: true)
+        self.defaults = defaults
+
+        let fileManager = FileManager.default
+        try? fileManager.removeItem(at: tempFolder)
+        try? fileManager.removeItem(at: Self.shareRoot)
         do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: tempFolder, withIntermediateDirectories: true)
+        } catch {
+            alertMessage = String(localized: "Не удалось подготовить хранилище: \(error.localizedDescription)")
+        }
+        loadLibrary()
+        loadTemplates()
+    }
+
+    private func loadLibrary() {
+        do {
             let data = try Data(contentsOf: indexURL)
             let saved = try JSONDecoder().decode(FolioSnapshot.self, from: data)
-            documents = saved.documents.filter {
+            let existing = saved.documents.filter {
                 FileManager.default.fileExists(atPath: folder.appendingPathComponent($0.relativePath).path)
             }
-            let ids = Set(documents.map(\.id))
-            draft = saved.draftPages.filter { ids.contains($0.documentID) }
-            lastResultID = documents.first(where: { $0.kind == .result })?.id
+            documents = existing
+            let ids = Set(existing.map(\.id))
+            draft = saved.draftPages.filter { page in
+                guard ids.contains(page.documentID),
+                      let document = existing.first(where: { $0.id == page.documentID }) else { return false }
+                return page.pageIndex >= 0 && page.pageIndex < document.pageCount
+            }
+            let recovered = recoverUnindexedFiles()
+            if existing.count != saved.documents.count || draft.count != saved.draftPages.count || recovered > 0
+                || saved.version != FolioSnapshot.currentVersion {
+                persist()
+            }
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            // First launch: index does not exist yet.
+            // Первый запуск или индекс был удалён: подхватываем файлы, если они есть.
+            if recoverUnindexedFiles() > 0 { persist() }
         } catch {
-            // Never replace a damaged index silently. User can export existing files from app storage.
-            alertMessage = "Не удалось открыть библиотеку. Исходные файлы не удалены. Проверьте резервную копию данных приложения."
+            // Повреждённый индекс никогда не перезаписывается молча: сохраняем копию и восстанавливаем список по файлам.
+            let backup = backupCorruptedIndex()
+            let recovered = recoverUnindexedFiles()
+            persist()
+            var message = String(localized: "Список документов был повреждён. Восстановлено из хранилища: \(FolioPlural.documents(recovered)).")
+            if let backup {
+                message += " " + String(localized: "Копия старого списка: \(backup.lastPathComponent).")
+            }
+            alertMessage = message
+        }
+        lastResultID = documents.first(where: { $0.kind == .result })?.id
+    }
+
+    private func backupCorruptedIndex() -> URL? {
+        let stamp = Int(Date().timeIntervalSince1970)
+        let backup = root.appendingPathComponent("index.corrupted-\(stamp).json")
+        do {
+            try FileManager.default.moveItem(at: indexURL, to: backup)
+            return backup
+        } catch {
+            return nil
         }
     }
+
+    /// Возвращает в библиотеку файлы, которые лежат в хранилище, но отсутствуют в индексе
+    /// (например, после сбоя между записью файла и записью индекса).
+    @discardableResult
+    private func recoverUnindexedFiles() -> Int {
+        let known = Set(documents.map(\.relativePath))
+        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        var recovered: [FolioDocument] = []
+        for url in files where url.pathExtension.lowercased() == "pdf" && !known.contains(url.lastPathComponent) {
+            guard let pages = PDFWorker.pageCount(of: url),
+                  let bytes = try? PDFWorker.byteCount(for: url) else { continue }
+            let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent) ?? UUID()
+            guard !documents.contains(where: { $0.id == id }) else { continue }
+            recovered.append(FolioDocument(id: id,
+                                           title: String(localized: "Восстановленный документ \(recovered.count + 1)"),
+                                           relativePath: url.lastPathComponent,
+                                           kind: .source, origin: .pdf,
+                                           pageCount: pages, byteCount: bytes, createdAt: Date()))
+        }
+        documents.append(contentsOf: recovered)
+        return recovered.count
+    }
+
+    // MARK: - Производные значения
 
     var sourceDocuments: [FolioDocument] { documents.filter { $0.kind == .source } }
     var resultDocuments: [FolioDocument] { documents.filter { $0.kind == .result } }
     var recentDocuments: [FolioDocument] { Array(documents.sorted { $0.createdAt > $1.createdAt }.prefix(3)) }
     var draftSourceCount: Int { Set(draft.map(\.documentID)).count }
+    var storageBytes: Int64 { documents.reduce(0) { $0 + $1.byteCount } }
+    var lastResult: FolioDocument? { documents.first(where: { $0.id == lastResultID }) }
+
+    func document(id: UUID) -> FolioDocument? { documents.first(where: { $0.id == id }) }
 
     func localURL(for document: FolioDocument) -> URL {
         folder.appendingPathComponent(document.relativePath)
     }
 
-    func openImporter(_ intent: ImportIntent) {
+    func localURL(forDocumentID id: UUID) -> URL? {
+        document(id: id).map(localURL(for:))
+    }
+
+    func draftPageCount(referencing ids: Set<UUID>) -> Int {
+        draft.filter { ids.contains($0.documentID) }.count
+    }
+
+    /// Имя по умолчанию на экране экспорта: название первого документа в комплекте.
+    var suggestedExportName: String {
+        if let firstID = draft.first?.documentID, let first = document(id: firstID), first.kind == .source,
+           draftSourceCount == 1 {
+            return first.title
+        }
+        return String(localized: "Документ \(Date().formatted(date: .numeric, time: .omitted))")
+    }
+
+    // MARK: - Запуск задач
+
+    /// Точка входа для кнопок «Объединить PDF», «Фото в PDF», «Сканировать», шаблонов и т. п.
+    /// Если есть незавершённый комплект, сначала спрашиваем, добавить к нему или начать новый.
+    func startTask(_ intent: ImportIntent, preset: ExportPreset? = nil) {
+        guard !isProcessing else { return }
         importIntent = intent
-        if intent == .compression { exportQuality = .smallerPhotos }
-        if !draft.isEmpty && path.isEmpty {
-            pendingIntent = intent
-            showingTaskChoice = true
+        apply(preset ?? Self.defaultPreset(for: intent))
+        if draft.isEmpty {
+            replaceDraftOnImport = false
+            presentSource()
         } else {
-            showingImporter = true
+            showingTaskChoice = true
         }
     }
 
-    func chooseAppendToDraft() {
-        if let pendingIntent { importIntent = pendingIntent }
-        pendingIntent = nil
+    /// «Добавить файлы» внутри редактора: всегда дополняет текущий комплект.
+    func addToCurrentDraft(_ source: ImportSource = .files) {
+        guard !isProcessing else { return }
+        importIntent = source == .photos ? .photographs : (source == .scanner ? .scan : .documents)
         replaceDraftOnImport = false
-        showingImporter = true
+        presentSource()
+    }
+
+    func chooseAppendToDraft() {
+        replaceDraftOnImport = false
+        presentSource()
     }
 
     func chooseNewDraft() {
-        if let pendingIntent { importIntent = pendingIntent }
-        pendingIntent = nil
-        // Keep the previous draft until at least one new input succeeds.
+        // Текущий комплект остаётся, пока не будет успешно добавлен хотя бы один новый документ.
         replaceDraftOnImport = true
-        showingImporter = true
+        presentSource()
     }
+
+    private func presentSource() {
+        switch importIntent.source {
+        case .files:
+            showingImporter = true
+        case .photos:
+            photoSelection = []
+            showingPhotoPicker = true
+        case .scanner:
+            startScanner()
+        }
+    }
+
+    private static func defaultPreset(for intent: ImportIntent) -> ExportPreset {
+        switch intent {
+        case .compression: ExportPreset(quality: .smallerPhotos, targetMB: 5)
+        case .documents, .photographs, .editing, .scan: ExportPreset(quality: .original, targetMB: nil)
+        }
+    }
+
+    private func apply(_ preset: ExportPreset) {
+        exportQuality = preset.quality
+        targetSizeMB = preset.targetMB
+    }
+
+    /// Плитка «Изменить страницы».
+    func editPages() {
+        if draft.isEmpty { startTask(.editing) } else { continueDraft() }
+    }
+
+    func continueDraft() {
+        guard !draft.isEmpty else { startTask(.documents); return }
+        tab = .home
+        homePath = [.composer]
+    }
+
+    /// Кнопка «Готово» на экране результата.
+    func finishFlow() {
+        homePath = []
+    }
+
+    // MARK: - Импорт из «Файлов»
 
     func handleImporter(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
-            guard !urls.isEmpty else { replaceDraftOnImport = false; return }
-            importFiles(urls)
+            guard !urls.isEmpty else { return }
+            let replace = takeReplaceFlag()
+            runProcessing(String(localized: "Добавляем документы…")) { [weak self] in
+                await self?.performImport(urls: urls, replace: replace)
+            }
         case .failure(let error):
             replaceDraftOnImport = false
-            // User cancellation may be reported as an error by the system picker.
             if (error as NSError).code != NSUserCancelledError { alertMessage = error.localizedDescription }
         }
     }
 
-    private func importFiles(_ urls: [URL]) {
-        guard !isProcessing else { return }
-        isProcessing = true
-        processingLabel = "Добавляем документы…"
-        let intent = importIntent
-        let destination = folder
-
-        Task {
-            var imported = 0
-            var errors: [String] = []
-            for url in urls {
-                let newID = UUID()
-                do {
-                    let document = try await Task.detached(priority: .userInitiated) {
-                        try PDFWorker.importFile(url: url, id: newID, directory: destination)
-                    }.value
-                    if imported == 0 && replaceDraftOnImport {
-                        captureUndo()
-                        draft.removeAll()
-                        replaceDraftOnImport = false
-                    }
-                    documents.insert(document, at: 0)
-                    appendPages(of: document)
-                    imported += 1
-                } catch {
-                    errors.append("\(url.lastPathComponent): \(error.localizedDescription)")
-                }
-            }
-            if imported > 0 {
-                persist()
-                path = intent == .compression ? [.composer, .export] : [.composer]
-            }
-            replaceDraftOnImport = false
-            isProcessing = false
-            processingLabel = ""
-            if !errors.isEmpty {
-                alertMessage = "Добавлено: \(imported). Не удалось открыть: \(errors.count).\n" + errors.prefix(2).joined(separator: "\n")
-            }
-        }
-    }
-
-    func importScannedImages(_ images: [Data]) {
-        guard !images.isEmpty, !isProcessing else { return }
-        isProcessing = true
-        processingLabel = "Сохраняем сканы…"
+    /// Импорт файлов. Вызывается из UI через `runProcessing` и напрямую из тестов.
+    func performImport(urls: [URL], replace: Bool) async {
         let directory = folder
-        let id = UUID()
-        Task {
+        let temp = tempFolder
+        var imported: [FolioDocument] = []
+        var failures: [String] = []
+        var locked: [URL] = []
+        for url in urls {
+            if Task.isCancelled { break }
             do {
-                let item = try await Task.detached(priority: .userInitiated) {
-                    try PDFWorker.importScan(jpegs: images, id: id, directory: directory)
-                }.value
-                documents.insert(item, at: 0)
-                appendPages(of: item)
-                persist()
-                path = [.composer]
+                let document = try await Self.offMain {
+                    try PDFWorker.importFile(url: url, id: UUID(), directory: directory, tempDirectory: temp)
+                }
+                imported.append(document)
+            } catch is CancellationError {
+                break
+            } catch FolioIssue.passwordProtected {
+                locked.append(url)
             } catch {
-                alertMessage = error.localizedDescription
+                failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
             }
-            isProcessing = false
-            processingLabel = ""
+        }
+        finishImport(imported, replace: replace, failures: failures, total: urls.count)
+        if !locked.isEmpty && !Task.isCancelled {
+            pendingPasswordURLs = locked
+            askNextPassword()
         }
     }
 
-    private func appendPages(of document: FolioDocument) {
-        guard draft.count + document.pageCount <= PDFWorker.pageLimit else {
-            alertMessage = "В одном комплекте допускается не более 100 страниц. Документ сохранён в библиотеке."
+    // MARK: - Пароль PDF
+
+    private func askNextPassword(wrongAttempt: Bool = false, url: URL? = nil) {
+        if let url {
+            passwordRequest = FolioPasswordRequest(url: url, wrongAttempt: wrongAttempt)
+        } else if !pendingPasswordURLs.isEmpty {
+            passwordRequest = FolioPasswordRequest(url: pendingPasswordURLs.removeFirst())
+        } else {
+            passwordRequest = nil
+        }
+    }
+
+    func submitPassword(_ password: String) {
+        guard let request = passwordRequest else { return }
+        passwordRequest = nil
+        let url = request.url
+        let directory = folder
+        let temp = tempFolder
+        runProcessing(String(localized: "Открываем PDF…")) { [weak self] in
+            guard let self else { return }
+            do {
+                let document = try await Self.offMain {
+                    try PDFWorker.importFile(url: url, id: UUID(), password: password,
+                                             directory: directory, tempDirectory: temp)
+                }
+                // Документ добавляется к комплекту, который уже обновлён первой частью импорта.
+                self.finishImport([document], replace: false, failures: [], total: 1)
+                self.askNextPassword()
+            } catch FolioIssue.wrongPassword {
+                self.askNextPassword(wrongAttempt: true, url: url)
+            } catch is CancellationError {
+                self.pendingPasswordURLs = []
+            } catch {
+                self.alertMessage = "\(url.lastPathComponent): \(error.localizedDescription)"
+                self.askNextPassword()
+            }
+        }
+    }
+
+    func skipPassword() {
+        passwordRequest = nil
+        askNextPassword()
+    }
+
+    // MARK: - Импорт из «Фото»
+
+    func handlePhotoSelection(_ items: [PhotosPickerItem]) {
+        guard !items.isEmpty else { return }
+        photoSelection = []
+        let replace = takeReplaceFlag()
+        runProcessing(String(localized: "Добавляем фотографии…")) { [weak self] in
+            await self?.performPhotoImport(items, replace: replace)
+        }
+    }
+
+    private func performPhotoImport(_ items: [PhotosPickerItem], replace: Bool) async {
+        var payloads: [Data] = []
+        var failed = 0
+        for item in items {
+            if Task.isCancelled { return }
+            do {
+                if let data = try await item.loadTransferable(type: Data.self) {
+                    payloads.append(data)
+                } else {
+                    failed += 1
+                }
+            } catch {
+                failed += 1
+            }
+        }
+        await performImageImport(payloads.map { .data($0) }, origin: .photo, replace: replace,
+                                 failedBefore: failed, total: items.count)
+    }
+
+    /// Создаёт один документ из изображений. Используется для фото и сканов (и в тестах).
+    func performImageImport(_ inputs: [PDFWorker.ImageInput], origin: FileOrigin, replace: Bool,
+                            failedBefore: Int = 0, total: Int? = nil) async {
+        let directory = folder
+        let temp = tempFolder
+        let stamp = Date().formatted(date: .numeric, time: .shortened)
+        let title = origin == .scan ? String(localized: "Скан \(stamp)") : String(localized: "Фото \(stamp)")
+        var failures = Array(repeating: String(localized: "Фото не удалось загрузить"), count: failedBefore)
+        guard !inputs.isEmpty else {
+            finishImport([], replace: replace, failures: failures, total: total ?? failedBefore)
             return
         }
-        captureUndo()
-        draft.append(contentsOf: (0..<document.pageCount).map {
-            FolioDraftPage(id: UUID(), documentID: document.id, pageIndex: $0)
-        })
+        do {
+            let document = try await Self.offMain {
+                try PDFWorker.importImages(inputs, id: UUID(), title: title, origin: origin,
+                                           directory: directory, tempDirectory: temp)
+            }
+            finishImport([document], replace: replace, failures: failures, total: total ?? inputs.count)
+        } catch is CancellationError {
+            return
+        } catch {
+            failures.append(error.localizedDescription)
+            finishImport([], replace: replace, failures: failures, total: total ?? inputs.count)
+        }
     }
 
+    // MARK: - Сканер
+
+    private func startScanner() {
+        guard VNDocumentCameraViewController.isSupported else {
+            alertMessage = String(localized: "Сканирование недоступно на этом устройстве. Можно добавить фотографию документа из галереи.")
+            return
+        }
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            showingScanner = true
+        case .notDetermined:
+            Task { [weak self] in
+                let granted = await AVCaptureDevice.requestAccess(for: .video)
+                if granted { self?.showingScanner = true } else { self?.showingCameraDenied = true }
+            }
+        default:
+            showingCameraDenied = true
+        }
+    }
+
+    func importScannedImages(_ images: [UIImage]) {
+        showingScanner = false
+        guard !images.isEmpty else { return }
+        let replace = takeReplaceFlag()
+        runProcessing(String(localized: "Сохраняем скан…")) { [weak self] in
+            await self?.performImageImport(images.map { .image($0) }, origin: .scan, replace: replace)
+        }
+    }
+
+    func scannerCancelled() {
+        showingScanner = false
+        replaceDraftOnImport = false
+    }
+
+    func scannerFailed(_ error: Error) {
+        showingScanner = false
+        replaceDraftOnImport = false
+        alertMessage = String(localized: "Камера не смогла завершить сканирование: \(error.localizedDescription)")
+    }
+
+    // MARK: - Общий финал импорта
+
+    private func takeReplaceFlag() -> Bool {
+        let replace = replaceDraftOnImport
+        replaceDraftOnImport = false
+        return replace
+    }
+
+    private func finishImport(_ imported: [FolioDocument], replace: Bool, failures: [String], total: Int) {
+        var messages: [String] = []
+        if !imported.isEmpty {
+            documents.insert(contentsOf: imported, at: 0)
+            var newDraft = replace ? [] : draft
+            var skipped: [String] = []
+            var added = 0
+            for document in imported {
+                if newDraft.count + document.pageCount <= FolioLimits.draftPages {
+                    newDraft.append(contentsOf: Self.pages(of: document))
+                    added += 1
+                } else {
+                    skipped.append(document.title)
+                }
+            }
+            if added > 0 && newDraft != draft {
+                captureUndo()
+                draft = newDraft
+            }
+            persist()
+            if !skipped.isEmpty {
+                messages.append(String(localized: "В комплекте не больше \(FolioLimits.draftPages) страниц. Сохранено в библиотеке, но не добавлено: \(skipped.joined(separator: ", "))."))
+            }
+            if added > 0 {
+                tab = .home
+                homePath = importIntent == .compression ? [.composer, .export] : [.composer]
+            }
+        }
+        if !failures.isEmpty {
+            let header = String(localized: "Не удалось добавить: \(failures.count) из \(total).")
+            messages.append(([header] + failures.prefix(3)).joined(separator: "\n"))
+        }
+        if !messages.isEmpty { alertMessage = messages.joined(separator: "\n\n") }
+    }
+
+    private static func pages(of document: FolioDocument) -> [FolioDraftPage] {
+        (0..<document.pageCount).map { FolioDraftPage(id: UUID(), documentID: document.id, pageIndex: $0) }
+    }
+
+    // MARK: - Редактор из библиотеки
+
     func newDraftFrom(_ document: FolioDocument) {
-        if !draft.isEmpty {
+        if draft.isEmpty {
+            replaceDraftWith(document)
+        } else if Set(draft.map(\.documentID)) == [document.id] {
+            continueDraft()
+        } else {
             pendingEditorDocument = document
             showingEditChoice = true
-        } else {
-            replaceDraftWith(document)
         }
     }
 
     func chooseAddEditorDocument() {
-        guard let doc = pendingEditorDocument else { return }
+        guard let document = pendingEditorDocument else { return }
         pendingEditorDocument = nil
-        appendPages(of: doc)
+        guard draft.count + document.pageCount <= FolioLimits.draftPages else {
+            alertMessage = String(localized: "В комплекте не больше \(FolioLimits.draftPages) страниц.")
+            return
+        }
+        captureUndo()
+        draft.append(contentsOf: Self.pages(of: document))
         persist()
         tab = .home
-        path = [.composer]
+        homePath = [.composer]
     }
 
     func chooseReplaceEditorDocument() {
-        guard let doc = pendingEditorDocument else { return }
+        guard let document = pendingEditorDocument else { return }
         pendingEditorDocument = nil
-        replaceDraftWith(doc)
+        replaceDraftWith(document)
     }
 
     private func replaceDraftWith(_ document: FolioDocument) {
         captureUndo()
-        draft = (0..<document.pageCount).map {
-            FolioDraftPage(id: UUID(), documentID: document.id, pageIndex: $0)
-        }
+        draft = Self.pages(of: document)
         persist()
         tab = .home
-        path = [.composer]
+        homePath = [.composer]
     }
 
-    func continueDraft() {
-        guard !draft.isEmpty else { openImporter(.documents); return }
-        tab = .home
-        path = [.composer]
-    }
+    // MARK: - Редактирование страниц
 
     private func captureUndo() {
         undoStack.append(draft)
-        if undoStack.count > 30 { undoStack.removeFirst() }
+        if undoStack.count > FolioLimits.undoDepth { undoStack.removeFirst() }
     }
 
-    var canUndo: Bool { !undoStack.isEmpty }
     func undo() {
         guard let previous = undoStack.popLast() else { return }
         draft = previous
@@ -232,11 +553,32 @@ final class FolioStore: ObservableObject {
         persist()
     }
 
+    /// Перетаскивание: страница `id` встаёт на место страницы `targetID`.
+    func movePage(_ id: UUID, onto targetID: UUID) {
+        guard id != targetID,
+              let from = draft.firstIndex(where: { $0.id == id }),
+              let to = draft.firstIndex(where: { $0.id == targetID }) else { return }
+        captureUndo()
+        let page = draft.remove(at: from)
+        draft.insert(page, at: to)
+        persist()
+    }
+
+    func movePageToEdge(_ id: UUID, toStart: Bool) {
+        guard let from = draft.firstIndex(where: { $0.id == id }) else { return }
+        let to = toStart ? 0 : draft.count - 1
+        guard from != to else { return }
+        captureUndo()
+        let page = draft.remove(at: from)
+        draft.insert(page, at: toStart ? 0 : draft.count)
+        persist()
+    }
+
     func rotatePages(_ ids: Set<UUID>) {
         guard !ids.isEmpty else { return }
         captureUndo()
         for index in draft.indices where ids.contains(draft[index].id) {
-            draft[index].rotation = (draft[index].rotation + 90) % 360
+            draft[index].rotation = PDFWorker.normalizedRotation(draft[index].rotation + 90)
         }
         persist()
     }
@@ -260,8 +602,8 @@ final class FolioStore: ObservableObject {
         let additions = draft.filter { ids.contains($0.id) }.map {
             FolioDraftPage(id: UUID(), documentID: $0.documentID, pageIndex: $0.pageIndex, rotation: $0.rotation)
         }
-        guard draft.count + additions.count <= PDFWorker.pageLimit else {
-            alertMessage = "Достигнуто ограничение в 100 страниц."
+        guard draft.count + additions.count <= FolioLimits.draftPages else {
+            alertMessage = String(localized: "В комплекте не больше \(FolioLimits.draftPages) страниц.")
             return
         }
         captureUndo()
@@ -273,8 +615,10 @@ final class FolioStore: ObservableObject {
         captureUndo()
         draft.removeAll()
         persist()
-        path = []
+        homePath = []
     }
+
+    // MARK: - Библиотека
 
     func toggleFavorite(_ document: FolioDocument) {
         guard let index = documents.firstIndex(where: { $0.id == document.id }) else { return }
@@ -283,80 +627,236 @@ final class FolioStore: ObservableObject {
     }
 
     func rename(_ document: FolioDocument, to name: String) {
-        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, let index = documents.firstIndex(where: { $0.id == document.id }) else { return }
+        guard let index = documents.firstIndex(where: { $0.id == document.id }) else { return }
+        let clean = name.folioCleanTitle(fallback: "")
+        guard !clean.isEmpty else { return }
         documents[index].title = clean
         persist()
     }
 
+    /// Удаляет документы из библиотеки вместе с их страницами в комплекте.
+    /// Сначала удаляются файлы, затем пишется индекс: при сбое в промежутке запись без файла будет отброшена при запуске.
+    func deleteDocuments(_ ids: Set<UUID>) {
+        let removed = documents.filter { ids.contains($0.id) }
+        guard !removed.isEmpty else { return }
+        for document in removed {
+            let url = localURL(for: document)
+            try? FileManager.default.removeItem(at: url)
+            Task { await ThumbnailRenderer.shared.forget(url: url) }
+        }
+        documents.removeAll { ids.contains($0.id) }
+        draft.removeAll { ids.contains($0.documentID) }
+        undoStack = undoStack.map { snapshot in snapshot.filter { !ids.contains($0.documentID) } }
+        if let lastResultID, ids.contains(lastResultID) {
+            self.lastResultID = documents.first(where: { $0.kind == .result })?.id
+            lastExportNote = nil
+        }
+        homePath = Self.pruned(homePath, removing: ids, draftIsEmpty: draft.isEmpty)
+        filesPath = Self.pruned(filesPath, removing: ids, draftIsEmpty: draft.isEmpty)
+        persist()
+    }
+
+    private static func pruned(_ path: [FolioRoute], removing ids: Set<UUID>, draftIsEmpty: Bool) -> [FolioRoute] {
+        var result: [FolioRoute] = []
+        for route in path {
+            if case .document(let id) = route, ids.contains(id) { break }
+            if draftIsEmpty && (route == .composer || route == .export) { break }
+            result.append(route)
+        }
+        return result
+    }
+
+    /// «Удалить все документы» в настройках. Шаблоны сохраняются.
+    func deleteAllDocuments() {
+        for document in documents { try? FileManager.default.removeItem(at: localURL(for: document)) }
+        Task { await ThumbnailRenderer.shared.forgetAll() }
+        documents = []
+        draft = []
+        undoStack = []
+        lastResultID = nil
+        lastExportNote = nil
+        homePath = []
+        filesPath = []
+        persist()
+    }
+
+    // MARK: - Экспорт
+
     func exportDraft(name: String) {
-        guard !draft.isEmpty, !isProcessing else {
+        guard !isProcessing else { return }
+        guard !draft.isEmpty else {
             alertMessage = FolioIssue.noPages.localizedDescription
             return
         }
-        isProcessing = true
-        processingLabel = "Создаём PDF…"
-        let sourceDocuments = documents
-        let pages = draft
-        let destinationFolder = folder
-        let quality = exportQuality
-        let safeTitle = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Новый PDF" : name
-        let id = UUID()
-        let relativePath = "\(id.uuidString).pdf"
-        let destination = folder.appendingPathComponent(relativePath)
-        let target = targetSizeMB
-        Task {
-            do {
-                let result = try await Task.detached(priority: .userInitiated) {
-                    try PDFWorker.export(pages: pages, documents: sourceDocuments, directory: destinationFolder,
-                                         destination: destination, quality: quality)
-                }.value
-                let document = FolioDocument(id: id, title: safeTitle, relativePath: relativePath,
-                                             kind: .result, origin: .pdf, pageCount: pages.count,
-                                             byteCount: result.byteCount, createdAt: Date())
-                documents.insert(document, at: 0)
-                lastResultID = id
-                persist()
-                path = [.composer, .export, .result]
-                if let target, result.byteCount > Int64(target) * 1024 * 1024 {
-                    alertMessage = "PDF создан, но его размер превышает цель \(target) МБ. Исходное качество не ухудшалось для обычных PDF."
-                }
-            } catch {
-                alertMessage = error.localizedDescription
-            }
-            isProcessing = false
-            processingLabel = ""
+        runProcessing(String(localized: "Создаём PDF…")) { [weak self] in
+            await self?.performExport(name: name)
         }
     }
 
-    /// The receiver sees an informative filename, never an internal UUID.
+    /// Создание PDF. Вызывается из UI через `runProcessing` и напрямую из тестов.
+    func performExport(name: String) async {
+        let title = name.folioCleanTitle(fallback: suggestedExportName)
+        let pages = draft
+        let sources = documents
+        let directory = folder
+        let temp = tempFolder
+        let quality = exportQuality
+        let target = targetSizeMB
+        let targetBytes = target.map { Int64($0) * 1_000_000 }
+        let id = UUID()
+        let relativePath = "\(id.uuidString).pdf"
+        let destination = folder.appendingPathComponent(relativePath)
+        do {
+            let outcome = try await Self.offMain {
+                try PDFWorker.export(pages: pages, documents: sources, directory: directory, tempDirectory: temp,
+                                     destination: destination, title: title, quality: quality,
+                                     targetBytes: targetBytes)
+            }
+            let document = FolioDocument(id: id, title: title, relativePath: relativePath,
+                                         kind: .result, origin: .pdf, pageCount: pages.count,
+                                         byteCount: outcome.byteCount, createdAt: Date())
+            documents.insert(document, at: 0)
+            lastResultID = id
+            lastExportNote = Self.note(for: outcome, quality: quality, target: target, targetBytes: targetBytes)
+            persist()
+            tab = .home
+            homePath = [.composer, .export, .result]
+        } catch is CancellationError {
+            alertMessage = String(localized: "Создание PDF отменено. Комплект не изменён.")
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    private static func note(for outcome: ExportOutcome, quality: PDFQuality, target: Int?, targetBytes: Int64?) -> String? {
+        let size = FolioLimits.formatted(outcome.byteCount)
+        if let target, let targetBytes, outcome.byteCount > targetBytes {
+            switch quality {
+            case .original:
+                return String(localized: "Размер \(size) больше цели \(target) МБ. В режиме «Исходное качество» страницы не сжимаются — выберите «Уменьшить фото и сканы» или «Максимальное сжатие».")
+            case .smallerPhotos:
+                return String(localized: "Удалось уменьшить до \(size), но цель \(target) МБ не достигнута. Обычные PDF-страницы в этом режиме не сжимаются — попробуйте «Максимальное сжатие».")
+            case .maximum:
+                return String(localized: "Удалось уменьшить до \(size), но цель \(target) МБ не достигнута. Уберите часть страниц или разделите документ.")
+            }
+        }
+        if outcome.usedCompression {
+            let before = FolioLimits.formatted(outcome.uncompressedByteCount)
+            return String(localized: "Размер уменьшен: \(before) → \(size).")
+        }
+        if quality != .original {
+            return String(localized: "Сжатие не дало выигрыша, сохранён вариант без потери качества.")
+        }
+        return nil
+    }
+
+    /// Временная копия с понятным именем для отправки: получатель видит название, а не внутренний UUID.
     func makeShareCopy(for document: FolioDocument) throws -> URL {
-        let cleanName = document.title
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
-            .replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let basename = cleanName.lowercased().hasSuffix(".pdf") ? String(cleanName.dropLast(4)) : cleanName
-        let folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FOLIO-share/\(UUID().uuidString)", isDirectory: true)
+        let folder = Self.shareRoot.appendingPathComponent(document.id.uuidString, isDirectory: true)
+        try? FileManager.default.removeItem(at: folder)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let target = folder.appendingPathComponent((basename.isEmpty ? "Документ" : basename) + ".pdf")
+        let name = document.title.folioCleanTitle(fallback: String(localized: "Документ"))
+        let target = folder.appendingPathComponent(name + ".pdf")
         try FileManager.default.copyItem(at: localURL(for: document), to: target)
         return target
     }
 
-    func removeShareCopy(_ url: URL?) {
-        guard let url else { return }
-        try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+    private static var shareRoot: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("FOLIO-share", isDirectory: true)
     }
+
+    // MARK: - Шаблоны
+
+    private func loadTemplates() {
+        guard let data = defaults.data(forKey: Self.templatesKey),
+              let decoded = try? JSONDecoder().decode([FolioSavedWorkflow].self, from: data) else { return }
+        templates = decoded
+    }
+
+    private func saveTemplates() {
+        if let data = try? JSONEncoder().encode(templates) {
+            defaults.set(data, forKey: Self.templatesKey)
+        }
+    }
+
+    func createTemplate(name: String, quality: PDFQuality, targetMB: Int?) {
+        let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        templates.insert(FolioSavedWorkflow(id: UUID(), name: String(title.prefix(FolioLimits.titleLength)),
+                                            description: quality.title,
+                                            quality: quality, targetMB: targetMB), at: 0)
+        saveTemplates()
+    }
+
+    func deleteTemplates(_ ids: Set<UUID>) {
+        templates.removeAll { ids.contains($0.id) }
+        saveTemplates()
+    }
+
+    func launch(_ workflow: FolioSavedWorkflow) {
+        startTask(workflow.intent, preset: workflow.preset)
+    }
+
+    // MARK: - Длительные операции
+
+    private func runProcessing(_ label: String, _ operation: @escaping @MainActor () async -> Void) {
+        guard !isProcessing else { return }
+        isProcessing = true
+        processingLabel = label
+        beginBackgroundWork()
+        currentTask = Task { [weak self] in
+            await operation()
+            self?.endProcessing()
+        }
+    }
+
+    private func endProcessing() {
+        isProcessing = false
+        processingLabel = ""
+        currentTask = nil
+        endBackgroundWork()
+    }
+
+    func cancelProcessing() {
+        currentTask?.cancel()
+    }
+
+    /// iOS даёт немного времени завершить операцию, если пользователь свернул приложение.
+    private func beginBackgroundWork() {
+        endBackgroundWork()
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "FOLIO.processing") { [weak self] in
+            MainActor.assumeIsolated {
+                self?.currentTask?.cancel()
+                self?.endBackgroundWork()
+            }
+        }
+    }
+
+    private func endBackgroundWork() {
+        guard backgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+        backgroundTaskID = .invalid
+    }
+
+    /// Выполняет синхронную работу вне главного потока; отмена родительской задачи передаётся внутрь.
+    private static func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+        let task = Task.detached(priority: .userInitiated) { try work() }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    // MARK: - Сохранение индекса
 
     private func persist() {
         do {
-            let state = FolioSnapshot(documents: documents, draftPages: draft)
+            let state = FolioSnapshot(version: FolioSnapshot.currentVersion, documents: documents, draftPages: draft)
             let encoded = try JSONEncoder().encode(state)
             try encoded.write(to: indexURL, options: .atomic)
         } catch {
-            alertMessage = "Не удалось записать изменения библиотеки: \(error.localizedDescription)"
+            alertMessage = String(localized: "Не удалось записать изменения библиотеки: \(error.localizedDescription)")
         }
     }
 }

@@ -1,64 +1,399 @@
 // !$*UTF8*$!
 {
 	archiveVersion = 1;
-	classes = {};
-	objectVersion = 56;
-	objects = {
-		5D56DE4DA6AB06B0133F571F /* FolioTheme.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Design/FolioTheme.swift"; sourceTree = "<group>"; };
-		4EDDFBF286F45C718DCC194C /* FolioTheme.swift in Sources */ = { isa = PBXBuildFile; fileRef = 5D56DE4DA6AB06B0133F571F /* FolioTheme.swift */; };
-		C00009D0566F73175A5392BB /* FOLIOApp.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/FOLIOApp.swift"; sourceTree = "<group>"; };
-		D7837C10E60C56907EC5F32C /* FOLIOApp.swift in Sources */ = { isa = PBXBuildFile; fileRef = C00009D0566F73175A5392BB /* FOLIOApp.swift */; };
-		A8345B0F219A05C6C3D904FC /* DocumentModels.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Models/DocumentModels.swift"; sourceTree = "<group>"; };
-		09867AB1FB8314B887A92735 /* DocumentModels.swift in Sources */ = { isa = PBXBuildFile; fileRef = A8345B0F219A05C6C3D904FC /* DocumentModels.swift */; };
-		9DCFF5856D84E1C75D01F639 /* FolioComposerView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Screens/FolioComposerView.swift"; sourceTree = "<group>"; };
-		4D3C1E22CAAD7B93A2DE1AD9 /* FolioComposerView.swift in Sources */ = { isa = PBXBuildFile; fileRef = 9DCFF5856D84E1C75D01F639 /* FolioComposerView.swift */; };
-		B84C604942E6A9F8596276C5 /* FolioDocumentView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Screens/FolioDocumentView.swift"; sourceTree = "<group>"; };
-		DDF512A77CF9799F92DBC6F4 /* FolioDocumentView.swift in Sources */ = { isa = PBXBuildFile; fileRef = B84C604942E6A9F8596276C5 /* FolioDocumentView.swift */; };
-		DD9EC7296988DF16EC62978A /* FolioExportView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Screens/FolioExportView.swift"; sourceTree = "<group>"; };
-		349D1C6E7CE9C250E9AE379C /* FolioExportView.swift in Sources */ = { isa = PBXBuildFile; fileRef = DD9EC7296988DF16EC62978A /* FolioExportView.swift */; };
-		85169F43BAA8F734720424B3 /* FolioHomeView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Screens/FolioHomeView.swift"; sourceTree = "<group>"; };
-		8B8EEA9C470B8E0476325166 /* FolioHomeView.swift in Sources */ = { isa = PBXBuildFile; fileRef = 85169F43BAA8F734720424B3 /* FolioHomeView.swift */; };
-		9D34EEDAC47CDB9D63711538 /* FolioLibraryView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Screens/FolioLibraryView.swift"; sourceTree = "<group>"; };
-		FB0A3005B6870DC679F7F0CB /* FolioLibraryView.swift in Sources */ = { isa = PBXBuildFile; fileRef = 9D34EEDAC47CDB9D63711538 /* FolioLibraryView.swift */; };
-		9F0614AFB4980225ABEDD240 /* FolioResultView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Screens/FolioResultView.swift"; sourceTree = "<group>"; };
-		B63C1724AA41528DD77B0FD7 /* FolioResultView.swift in Sources */ = { isa = PBXBuildFile; fileRef = 9F0614AFB4980225ABEDD240 /* FolioResultView.swift */; };
-		CEFBCCF7E2C8244EE08A68BC /* FolioRootView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Screens/FolioRootView.swift"; sourceTree = "<group>"; };
-		9D101D70823F84BAA97EF55D /* FolioRootView.swift in Sources */ = { isa = PBXBuildFile; fileRef = CEFBCCF7E2C8244EE08A68BC /* FolioRootView.swift */; };
-		2C21C6DE55AC49BE87C5C4CF /* FolioSettingsView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Screens/FolioSettingsView.swift"; sourceTree = "<group>"; };
-		F8DDA8C1305C6B2A3A3C0CA8 /* FolioSettingsView.swift in Sources */ = { isa = PBXBuildFile; fileRef = 2C21C6DE55AC49BE87C5C4CF /* FolioSettingsView.swift */; };
-		B435F30BB54042C986824CED /* FolioTemplatesView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Screens/FolioTemplatesView.swift"; sourceTree = "<group>"; };
-		26B0280248A9166714D18C98 /* FolioTemplatesView.swift in Sources */ = { isa = PBXBuildFile; fileRef = B435F30BB54042C986824CED /* FolioTemplatesView.swift */; };
-		9C941F88CB933421F125027A /* FolioScannerView.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Services/FolioScannerView.swift"; sourceTree = "<group>"; };
-		F27EE410C407B666A863D181 /* FolioScannerView.swift in Sources */ = { isa = PBXBuildFile; fileRef = 9C941F88CB933421F125027A /* FolioScannerView.swift */; };
-		1E382FAEAF1C05E74E87E0D9 /* FolioStore.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Services/FolioStore.swift"; sourceTree = "<group>"; };
-		4B7BFBC4D600F5EEA77881D9 /* FolioStore.swift in Sources */ = { isa = PBXBuildFile; fileRef = 1E382FAEAF1C05E74E87E0D9 /* FolioStore.swift */; };
-		94359999E2BA3CF0A0A9CA8E /* PDFWorker.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIO/Services/PDFWorker.swift"; sourceTree = "<group>"; };
-		FB293B2C3CCF81A4A165CB3E /* PDFWorker.swift in Sources */ = { isa = PBXBuildFile; fileRef = 94359999E2BA3CF0A0A9CA8E /* PDFWorker.swift */; };
-		B39B1E120B8FA05A45477652 /* FOLIOTests.swift */ = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FOLIOTests/FOLIOTests.swift"; sourceTree = "<group>"; };
-		B961AF68DACFF4F2E243B28D /* FOLIOTests.swift in Sources */ = { isa = PBXBuildFile; fileRef = B39B1E120B8FA05A45477652 /* FOLIOTests.swift */; };
-		9DFD7DD5739FED6B78317F09 /* Assets.xcassets */ = { isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "FOLIO/Resources/Assets.xcassets"; sourceTree = "<group>"; };
-		6E46D66B23AE36CDEE68C60F /* Assets in Resources */ = { isa = PBXBuildFile; fileRef = 9DFD7DD5739FED6B78317F09 /* Assets.xcassets */; };
-		2C9B01F68E98F3ECBC7444B7 /* FOLIO.app */ = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FOLIO.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		B00C94A42D0920C0DFF47063 /* FOLIOTests.xctest */ = { isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FOLIOTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		FDBD32145E088D12E08AC02F /* Products */ = { isa = PBXGroup; children = (2C9B01F68E98F3ECBC7444B7 /* FOLIO.app */,B00C94A42D0920C0DFF47063 /* FOLIOTests.xctest */,); name = Products; sourceTree = "<group>"; };
-		AA80A9FA5081C1729EF746C8 /* Main Group */ = { isa = PBXGroup; children = (5D56DE4DA6AB06B0133F571F /* FolioTheme.swift */, C00009D0566F73175A5392BB /* FOLIOApp.swift */, A8345B0F219A05C6C3D904FC /* DocumentModels.swift */, 9DCFF5856D84E1C75D01F639 /* FolioComposerView.swift */, B84C604942E6A9F8596276C5 /* FolioDocumentView.swift */, DD9EC7296988DF16EC62978A /* FolioExportView.swift */, 85169F43BAA8F734720424B3 /* FolioHomeView.swift */, 9D34EEDAC47CDB9D63711538 /* FolioLibraryView.swift */, 9F0614AFB4980225ABEDD240 /* FolioResultView.swift */, CEFBCCF7E2C8244EE08A68BC /* FolioRootView.swift */, 2C21C6DE55AC49BE87C5C4CF /* FolioSettingsView.swift */, B435F30BB54042C986824CED /* FolioTemplatesView.swift */, 9C941F88CB933421F125027A /* FolioScannerView.swift */, 1E382FAEAF1C05E74E87E0D9 /* FolioStore.swift */, 94359999E2BA3CF0A0A9CA8E /* PDFWorker.swift */, B39B1E120B8FA05A45477652 /* FOLIOTests.swift */, 9DFD7DD5739FED6B78317F09 /* Assets.xcassets */, FDBD32145E088D12E08AC02F /* Products */, ); sourceTree = "<group>"; };
-		46064165D4886054CB19B67C /* Sources */ = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (4EDDFBF286F45C718DCC194C /* FolioTheme.swift in Sources */, D7837C10E60C56907EC5F32C /* FOLIOApp.swift in Sources */, 09867AB1FB8314B887A92735 /* DocumentModels.swift in Sources */, 4D3C1E22CAAD7B93A2DE1AD9 /* FolioComposerView.swift in Sources */, DDF512A77CF9799F92DBC6F4 /* FolioDocumentView.swift in Sources */, 349D1C6E7CE9C250E9AE379C /* FolioExportView.swift in Sources */, 8B8EEA9C470B8E0476325166 /* FolioHomeView.swift in Sources */, FB0A3005B6870DC679F7F0CB /* FolioLibraryView.swift in Sources */, B63C1724AA41528DD77B0FD7 /* FolioResultView.swift in Sources */, 9D101D70823F84BAA97EF55D /* FolioRootView.swift in Sources */, F8DDA8C1305C6B2A3A3C0CA8 /* FolioSettingsView.swift in Sources */, 26B0280248A9166714D18C98 /* FolioTemplatesView.swift in Sources */, F27EE410C407B666A863D181 /* FolioScannerView.swift in Sources */, 4B7BFBC4D600F5EEA77881D9 /* FolioStore.swift in Sources */, FB293B2C3CCF81A4A165CB3E /* PDFWorker.swift in Sources */, ); runOnlyForDeploymentPostprocessing = 0; };
-		A035BA538649156B3380098C /* Tests Sources */ = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B961AF68DACFF4F2E243B28D /* FOLIOTests.swift in Sources */, ); runOnlyForDeploymentPostprocessing = 0; };
-		25139E848A15DE7C0E517103 /* Resources */ = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (6E46D66B23AE36CDEE68C60F /* Assets.xcassets in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
-		B517E9FFB5B1A28FECC94316 /* Frameworks */ = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-		A47EA80B3B87E96A340028CD /* Frameworks */ = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-		19976C7C43DEEBB63B6C82A6 /* Debug */ = { isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CODE_SIGN_STYLE = Automatic; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.9; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
-		B17281F9DAEC1F46A8754B26 /* Debug */ = { isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 4; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = FOLIO; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity"; INFOPLIST_KEY_NSCameraUsageDescription = "Сканируйте бумажные документы, чтобы сохранить их как PDF."; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 0.4.0; PRODUCT_BUNDLE_IDENTIFIER = com.example.folio.documents; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.9; TARGETED_DEVICE_FAMILY = "1"; }; name = Debug; };
-		2A6D119E6EC0CDDFC59F730F /* Debug */ = { isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.example.folio.documents.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.9; TARGETED_DEVICE_FAMILY = "1"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FOLIO.app/FOLIO"; }; name = Debug; };
-		9DDCA3FD836C5BA572C6DCE6 /* Release */ = { isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CODE_SIGN_STYLE = Automatic; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.9; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; name = Release; };
-		840C6F4E0CD12C7BC40EA7A9 /* Release */ = { isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 4; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = FOLIO; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity"; INFOPLIST_KEY_NSCameraUsageDescription = "Сканируйте бумажные документы, чтобы сохранить их как PDF."; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 0.4.0; PRODUCT_BUNDLE_IDENTIFIER = com.example.folio.documents; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.9; TARGETED_DEVICE_FAMILY = "1"; }; name = Release; };
-		0D2CFF718D86C4E3FEB71DA8 /* Release */ = { isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.example.folio.documents.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.9; TARGETED_DEVICE_FAMILY = "1"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FOLIO.app/FOLIO"; }; name = Release; };
-		A120386763686ECE1E5FD6E9 /* Build configuration list */ = { isa = XCConfigurationList; buildConfigurations = (19976C7C43DEEBB63B6C82A6 /* Debug */, 9DDCA3FD836C5BA572C6DCE6 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		7CF2FC587AA2D70D4D301D50 /* Build configuration list */ = { isa = XCConfigurationList; buildConfigurations = (B17281F9DAEC1F46A8754B26 /* Debug */, 840C6F4E0CD12C7BC40EA7A9 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		59C688682B3438A257C4DBED /* Build configuration list */ = { isa = XCConfigurationList; buildConfigurations = (2A6D119E6EC0CDDFC59F730F /* Debug */, 0D2CFF718D86C4E3FEB71DA8 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		127F421E7EFD8C3557BE35AD /* FOLIO */ = { isa = PBXNativeTarget; buildConfigurationList = 7CF2FC587AA2D70D4D301D50 /* Build configuration list */; buildPhases = (46064165D4886054CB19B67C /* Sources */, B517E9FFB5B1A28FECC94316 /* Frameworks */, 25139E848A15DE7C0E517103 /* Resources */); buildRules = (); dependencies = (); name = FOLIO; productName = FOLIO; productReference = 2C9B01F68E98F3ECBC7444B7 /* FOLIO.app */; productType = "com.apple.product-type.application"; };
-		E9049726EB697AD50E052960 /* FOLIOTests */ = { isa = PBXNativeTarget; buildConfigurationList = 59C688682B3438A257C4DBED /* Build configuration list */; buildPhases = (A035BA538649156B3380098C /* Sources */, A47EA80B3B87E96A340028CD /* Frameworks */); buildRules = (); dependencies = (); name = FOLIOTests; productName = FOLIOTests; productReference = B00C94A42D0920C0DFF47063 /* FOLIOTests.xctest */; productType = "com.apple.product-type.bundle.unit-test"; };
-		16EEAF57BAFC2A41CAB7C99A /* Project object */ = { isa = PBXProject; attributes = { BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 1600; TargetAttributes = {127F421E7EFD8C3557BE35AD = { CreatedOnToolsVersion = 15.0; }; E9049726EB697AD50E052960 = { CreatedOnToolsVersion = 15.0; TestTargetID = 127F421E7EFD8C3557BE35AD; }; }; }; buildConfigurationList = A120386763686ECE1E5FD6E9 /* Build configuration list */; compatibilityVersion = "Xcode 14.0"; developmentRegion = ru; hasScannedForEncodings = 0; knownRegions = (ru, en, Base); mainGroup = AA80A9FA5081C1729EF746C8 /* Main Group */; productRefGroup = FDBD32145E088D12E08AC02F /* Products */; projectDirPath = ""; projectRoot = ""; targets = (127F421E7EFD8C3557BE35AD /* FOLIO */, E9049726EB697AD50E052960 /* FOLIOTests */); };
+	classes = {
 	};
-	rootObject = 16EEAF57BAFC2A41CAB7C99A /* Project object */;
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		F0110000000000000000A001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F0110000000000000000F001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F0110000000000000000E001;
+			remoteInfo = FOLIO;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		F0110000000000000000B001 /* FOLIO.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FOLIO.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F0110000000000000000B002 /* FOLIOTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FOLIOTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		F0110000000000000000C001 /* FOLIO */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FOLIO;
+			sourceTree = "<group>";
+		};
+		F0110000000000000000C002 /* FOLIOTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FOLIOTests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F0110000000000000000D001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F0110000000000000000D002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		F01100000000000000006001 = {
+			isa = PBXGroup;
+			children = (
+				F0110000000000000000C001 /* FOLIO */,
+				F0110000000000000000C002 /* FOLIOTests */,
+				F01100000000000000006002 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		F01100000000000000006002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F0110000000000000000B001 /* FOLIO.app */,
+				F0110000000000000000B002 /* FOLIOTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		F0110000000000000000E001 /* FOLIO */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F01100000000000000008002 /* Build configuration list for PBXNativeTarget "FOLIO" */;
+			buildPhases = (
+				F01100000000000000005001 /* Sources */,
+				F0110000000000000000D001 /* Frameworks */,
+				F01100000000000000009001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				F0110000000000000000C001 /* FOLIO */,
+			);
+			name = FOLIO;
+			packageProductDependencies = (
+			);
+			productName = FOLIO;
+			productReference = F0110000000000000000B001 /* FOLIO.app */;
+			productType = "com.apple.product-type.application";
+		};
+		F0110000000000000000E002 /* FOLIOTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F01100000000000000008003 /* Build configuration list for PBXNativeTarget "FOLIOTests" */;
+			buildPhases = (
+				F01100000000000000005002 /* Sources */,
+				F0110000000000000000D002 /* Frameworks */,
+				F01100000000000000009002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F01100000000000000004001 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				F0110000000000000000C002 /* FOLIOTests */,
+			);
+			name = FOLIOTests;
+			packageProductDependencies = (
+			);
+			productName = FOLIOTests;
+			productReference = F0110000000000000000B002 /* FOLIOTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F0110000000000000000F001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					F0110000000000000000E001 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+					F0110000000000000000E002 = {
+						CreatedOnToolsVersion = 26.0;
+						TestTargetID = F0110000000000000000E001;
+					};
+				};
+			};
+			buildConfigurationList = F01100000000000000008001 /* Build configuration list for PBXProject "FOLIO" */;
+			developmentRegion = ru;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				ru,
+				Base,
+			);
+			mainGroup = F01100000000000000006001;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = F01100000000000000006002 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F0110000000000000000E001 /* FOLIO */,
+				F0110000000000000000E002 /* FOLIOTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		F01100000000000000009001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F01100000000000000009002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F01100000000000000005001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F01100000000000000005002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		F01100000000000000004001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F0110000000000000000E001 /* FOLIO */;
+			targetProxy = F0110000000000000000A001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		F01100000000000000007001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		F01100000000000000007002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		F01100000000000000007003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = FOLIO;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Камера нужна, чтобы сканировать бумажные документы и сохранять их как PDF.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.5.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.folio;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		F01100000000000000007004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = FOLIO;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Камера нужна, чтобы сканировать бумажные документы и сохранять их как PDF.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.5.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.folio;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		F01100000000000000007005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.5.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.folio.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FOLIO.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FOLIO";
+			};
+			name = Debug;
+		};
+		F01100000000000000007006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.5.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.folio.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FOLIO.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FOLIO";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		F01100000000000000008001 /* Build configuration list for PBXProject "FOLIO" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F01100000000000000007001 /* Debug */,
+				F01100000000000000007002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F01100000000000000008002 /* Build configuration list for PBXNativeTarget "FOLIO" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F01100000000000000007003 /* Debug */,
+				F01100000000000000007004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F01100000000000000008003 /* Build configuration list for PBXNativeTarget "FOLIOTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F01100000000000000007005 /* Debug */,
+				F01100000000000000007006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = F0110000000000000000F001 /* Project object */;
 }

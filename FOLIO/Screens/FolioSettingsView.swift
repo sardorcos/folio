@@ -2,51 +2,93 @@ import SwiftUI
 
 struct FolioSettingsView: View {
     @ObservedObject var store: FolioStore
+    @State private var confirmDeleteAll = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text("Настройки")
-                    .font(.largeTitle.weight(.bold))
+        List {
+            Section {
                 FolioInlineMessage(symbol: "lock.shield.fill",
-                                   title: "Ваши документы остаются на iPhone",
-                                   subtitle: "FOLIO не отправляет PDF на сервер. Файлы хранятся локально внутри приложения.")
-                FolioSectionHeader(title: "Документы")
-                VStack(spacing: 0) {
-                    settingRow("Сохранённые файлы", value: "\(store.documents.count)", symbol: "folder")
-                    Divider()
-                    settingRow("Незавершённый PDF", value: "\(store.draft.count) стр.", symbol: "square.stack")
-                    Divider()
-                    settingRow("Импорт PDF", value: "До 40 МБ", symbol: "doc")
-                    Divider()
-                    settingRow("Комплект", value: "До 100 стр.", symbol: "rectangle.stack")
-                }
-                .padding(.horizontal, 14)
-                .background(FolioTheme.card, in: RoundedRectangle(cornerRadius: FolioTheme.corner))
-                FolioSectionHeader(title: "Приложение")
-                Text("FOLIO — PDF, фото и сканы в порядке.")
-                    .font(.subheadline.weight(.medium))
-                Text("Демонстрационный iOS-проект интерфейса 0.4.0. Для публикации нужны сборка в Xcode, испытания и проверка подписи приложения.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                                   title: "Документы остаются на iPhone",
+                                   subtitle: "FOLIO не отправляет файлы на серверы и не собирает данные. Всё хранится внутри приложения.")
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
             }
-            .padding(18)
-        }
-        .background(FolioTheme.canvas)
-    }
 
-    private func settingRow(_ name: String, value: String, symbol: String) -> some View {
-        HStack {
-            Image(systemName: symbol)
-                .foregroundStyle(FolioTheme.blue)
-                .frame(width: 26)
-            Text(name)
-                .font(.subheadline)
-            Spacer()
-            Text(value)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            Section("Хранилище") {
+                LabeledContent {
+                    Text(FolioPlural.documents(store.documents.count))
+                } label: {
+                    Label("Документы", systemImage: "folder")
+                }
+                LabeledContent {
+                    Text(verbatim: FolioLimits.formatted(store.storageBytes))
+                } label: {
+                    Label("Занято", systemImage: "internaldrive")
+                }
+                LabeledContent {
+                    Text(FolioPlural.pages(store.draft.count))
+                } label: {
+                    Label("Незавершённый PDF", systemImage: "square.stack")
+                }
+            }
+
+            Section {
+                LabeledContent {
+                    Text(verbatim: FolioLimits.formatted(FolioLimits.pdfImportBytes))
+                } label: {
+                    Label("PDF", systemImage: "doc")
+                }
+                LabeledContent {
+                    Text(verbatim: FolioLimits.formatted(FolioLimits.imageImportBytes))
+                } label: {
+                    Label("Изображение", systemImage: "photo")
+                }
+                LabeledContent {
+                    Text(FolioPlural.pages(FolioLimits.draftPages))
+                } label: {
+                    Label("Страниц в одном PDF", systemImage: "rectangle.stack")
+                }
+            } header: {
+                Text("Ограничения")
+            } footer: {
+                Text("Максимальный размер одного файла при импорте и число страниц в одном PDF.")
+            }
+
+            Section("Поддержка") {
+                Link(destination: AppConfig.privacyPolicyURL) {
+                    Label("Политика конфиденциальности", systemImage: "hand.raised")
+                }
+                if let mail = AppConfig.supportMailURL {
+                    Link(destination: mail) {
+                        Label("Написать в поддержку", systemImage: "envelope")
+                    }
+                }
+                LabeledContent {
+                    Text(verbatim: AppConfig.appVersion)
+                } label: {
+                    Label("Версия", systemImage: "info.circle")
+                }
+            }
+
+            Section {
+                Button(role: .destructive) {
+                    confirmDeleteAll = true
+                } label: {
+                    Label("Удалить все документы", systemImage: "trash")
+                        .foregroundStyle(.red)
+                }
+                .disabled(store.documents.isEmpty)
+            } footer: {
+                Text("Удаляет все файлы из библиотеки FOLIO на этом устройстве. Шаблоны сохраняются.")
+            }
         }
-        .frame(minHeight: 51)
+        .navigationTitle("Настройки")
+        .confirmationDialog("Удалить все документы?", isPresented: $confirmDeleteAll, titleVisibility: .visible) {
+            Button("Удалить все (\(store.documents.count))", role: .destructive) {
+                store.deleteAllDocuments()
+            }
+        } message: {
+            Text("Это действие нельзя отменить. Оригиналы в «Файлах» и «Фото» не затрагиваются.")
+        }
     }
 }
