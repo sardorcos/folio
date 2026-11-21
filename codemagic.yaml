@@ -126,17 +126,25 @@ workflows:
                 -authenticationKeyID "$ASC_KEY_ID"
                 -authenticationKeyIssuerID "$ASC_ISSUER_ID")
           mkdir -p build/ios/ipa
+          # Архив подписывается локально (ad-hoc, с entitlements, включая App Group) — сертификат разработчика
+          # не нужен. Подпись App Store ставится при экспорте облачной подписью Apple.
           xcodebuild archive \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath build/ios/FOLIO.xcarchive \
-            "${AUTH[@]}" \
             DEVELOPMENT_TEAM="$FOLIO_TEAM_ID" \
-            CODE_SIGN_STYLE=Automatic > build/ios/archive.log 2>&1 \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="-" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=NO \
+            PROVISIONING_PROFILE_SPECIFIER="" > build/ios/archive.log 2>&1 \
             || { grep -E "error:|warning: .*(sign|profile|certificate)|Provisioning|Signing|No profiles|No Account" build/ios/archive.log | sort -u | head -40; tail -30 build/ios/archive.log; exit 1; }
           echo "Архив создан"
+          for app in build/ios/FOLIO.xcarchive/Products/Applications/*.app build/ios/FOLIO.xcarchive/Products/Applications/*.app/PlugIns/*.appex; do
+            echo "== $app"; codesign -d --entitlements - "$app" 2>/dev/null | grep -A3 application-groups || echo "   (нет App Group в подписи)"
+          done
           cat > build/ios/ExportOptions.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
