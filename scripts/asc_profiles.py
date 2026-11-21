@@ -33,21 +33,25 @@ def keychain_identities() -> set:
     return found
 
 
-def find_certificate(identities: set):
+def find_certificates(identities: set) -> list:
+    """Сертификаты Distribution для профиля: совпадающий с keychain, а если keychain пуст — все действующие."""
     status, certs = asc_testflight.call("GET", "/v1/certificates", query={
         "filter[certificateType]": "DISTRIBUTION,IOS_DISTRIBUTION", "limit": 200})
     if status != 200:
         raise SystemExit(f"❌ Не удалось получить сертификаты ({status}: {errors(certs)})")
+    chosen = []
     for cert in certs["data"]:
-        content = cert["attributes"].get("certificateContent")
+        attrs = cert["attributes"]
+        content = attrs.get("certificateContent")
         if not content:
             continue
         digest = hashlib.sha1(base64.b64decode(content)).hexdigest().upper()
-        if digest in identities:
-            attrs = cert["attributes"]
+        if not identities or digest in identities:
             print(f"Сертификат: {attrs.get('name')} (до {attrs.get('expirationDate', '')[:10]})")
-            return cert["id"]
-    raise SystemExit("❌ Сертификат из keychain не найден среди сертификатов Distribution в App Store Connect")
+            chosen.append(cert["id"])
+    if not chosen:
+        raise SystemExit("❌ Подходящий сертификат Distribution не найден в App Store Connect")
+    return chosen
 
 
 def bundle_resource(identifier: str) -> str:
@@ -61,7 +65,7 @@ def bundle_resource(identifier: str) -> str:
     raise SystemExit(f"❌ Bundle ID {identifier} не зарегистрирован в Apple Developer")
 
 
-def profile_for(identifier: str, bundle_id: str, cert_id: str) -> dict:
+def profile_for(identifier: str, bundle_id: str, cert_ids: list) -> dict:
     name = f"FOLIO {identifier} App Store"
     status, existing = asc_testflight.call("GET", "/v1/profiles", query={
         "filter[name]": name, "filter[profileType]": "IOS_APP_STORE", "limit": 20})
@@ -70,7 +74,7 @@ def profile_for(identifier: str, bundle_id: str, cert_id: str) -> dict:
             if profile["attributes"].get("profileState") != "ACTIVE":
                 continue
             status, certs = asc_testflight.call("GET", f"/v1/profiles/{profile['id']}/certificates", query={"limit": 50})
-            if status == 200 and any(c["id"] == cert_id for c in certs["data"]):
+            if status == 200 and set(cert_ids) <= {c["id"] for c in certs["data"]}:
                 print(f"Профиль «{name}» уже есть")
                 return profile
             # Профиль с другим сертификатом — удаляем, чтобы не плодить дубликаты.
@@ -80,7 +84,7 @@ def profile_for(identifier: str, bundle_id: str, cert_id: str) -> dict:
         "attributes": {"name": name, "profileType": "IOS_APP_STORE"},
         "relationships": {
             "bundleId": {"data": {"type": "bundleIds", "id": bundle_id}},
-            "certificates": {"data": [{"type": "certificates", "id": cert_id}]}}}})
+            "certificates": {"data": [{"type": "certificates", "id": c} for c in cert_ids]}}}})
     if status not in (200, 201):
         raise SystemExit(f"❌ Не удалось создать профиль «{name}» ({status}: {errors(created)})")
     print(f"✅ Создан профиль «{name}»")
@@ -100,12 +104,10 @@ def save(profile: dict) -> None:
 def main() -> int:
     asc_testflight.TOKEN = asc_testflight.token()
     identities = keychain_identities()
-    if not identities:
-        raise SystemExit("❌ В keychain нет подписывающего сертификата — проверьте ios_signing в codemagic.yaml")
-    cert_id = find_certificate(identities)
+    cert_ids = find_certificates(identities)
     for identifier in sys.argv[1:]:
         bundle_id = bundle_resource(identifier)
-        save(profile_for(identifier, bundle_id, cert_id))
+        save(profile_for(identifier, bundle_id, cert_ids))
     return 0
 
 

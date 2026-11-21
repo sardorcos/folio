@@ -61,6 +61,26 @@ workflows:
       - build/ios/test/*.xcresult
       - /tmp/xcodebuild_logs/*.log
 
+  # Создаёт/обновляет профили App Store для FOLIO и расширения в Apple Developer (без подписи).
+  # Нужен один раз и после изменения возможностей App ID или сертификатов.
+  ios-profiles:
+    name: FOLIO — профили App Store
+    instance_type: mac_mini_m2
+    max_build_duration: 15
+    integrations:
+      app_store_connect: monetniy-mir-asc
+    environment:
+      vars:
+        XCODE_PROJECT: FOLIO.xcodeproj
+    scripts:
+      - name: Профили App Store через API
+        script: |
+          set -euo pipefail
+          BUNDLE_ID=$(grep -m1 -oE 'FOLIO_APP_BUNDLE_ID = [^;]+' "$XCODE_PROJECT/project.pbxproj" | awk '{print $3}')
+          python3 -m venv /tmp/ascenv
+          /tmp/ascenv/bin/pip install --quiet --disable-pip-version-check pyjwt cryptography
+          /tmp/ascenv/bin/python scripts/asc_profiles.py "$BUNDLE_ID" "$BUNDLE_ID.share"
+
   ios-testflight:
     name: FOLIO → TestFlight
     instance_type: mac_mini_m2
@@ -70,12 +90,12 @@ workflows:
       app_store_connect: monetniy-mir-asc
     environment:
       xcode: latest
-      # Командный сертификат Apple Distribution из Codemagic (Code signing identities).
+      # Автоматическая подпись Codemagic: командный сертификат Apple Distribution из Code signing identities
+      # и профили App Store для FOLIO и расширения (их создаёт workflow ios-profiles через API).
       # Новый сертификат создать нельзя: у команды исчерпан лимит Distribution-сертификатов.
-      # Профили для FOLIO создаёт scripts/asc_profiles.py под этот сертификат.
       ios_signing:
-        certificates:
-          - monetniy-mir-distribution
+        distribution_type: app_store
+        bundle_identifier: com.neverlandplayworks.folio
       vars:
         XCODE_PROJECT: FOLIO.xcodeproj
         XCODE_SCHEME: FOLIO
