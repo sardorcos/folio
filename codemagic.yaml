@@ -65,22 +65,29 @@ workflows:
     name: FOLIO → TestFlight
     instance_type: mac_mini_m2
     max_build_duration: 60
+    # Ключ App Store Connect API — из интеграции команды (переменные APP_STORE_CONNECT_*).
+    integrations:
+      app_store_connect: monetniy-mir-asc
     environment:
       xcode: latest
       groups:
-        # APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_IDENTIFIER,
-        # APP_STORE_CONNECT_PRIVATE_KEY, CERTIFICATE_PRIVATE_KEY
-        - app_store_credentials
+        # CERTIFICATE_PRIVATE_KEY — закрытый ключ сертификата Apple Distribution (secure).
+        - folio_signing
       vars:
         XCODE_PROJECT: FOLIO.xcodeproj
         XCODE_SCHEME: FOLIO
-        # Необязательно: числовой Apple ID приложения из App Store Connect (App Information → Apple ID).
-        # Если добавить переменную APP_STORE_APPLE_ID, номер сборки будет «последний в TestFlight + 1».
-        # Пустые значения Codemagic не принимает — добавляйте переменную только со значением.
-    # Запускается вручную (Start new build) или через API, когда настроены ключи Apple — см. CODEMAGIC.md.
+    # Запускается вручную (Start new build) или через API.
     scripts:
       - name: Проверка структуры проекта
         script: python3 scripts/release_check.py
+
+      - name: TestFlight — приложение и внутренние тестировщики
+        script: |
+          set -euo pipefail
+          BUNDLE_ID=$(grep -m1 -oE 'FOLIO_APP_BUNDLE_ID = [^;]+' "$XCODE_PROJECT/project.pbxproj" | awk '{print $3}')
+          python3 -m venv /tmp/ascenv
+          /tmp/ascenv/bin/pip install --quiet --disable-pip-version-check pyjwt cryptography
+          /tmp/ascenv/bin/python scripts/asc_testflight.py "$BUNDLE_ID"
 
       - name: Bundle ID и номер сборки
         script: |
@@ -131,7 +138,5 @@ workflows:
 
     publishing:
       app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        auth: integration
         submit_to_testflight: true
