@@ -52,8 +52,8 @@ ssh-keygen -t rsa -b 2048 -m PEM -f folio_cert_key -q -N ""
 
 ## Шаг 5. Codemagic
 
-1. [codemagic.io](https://codemagic.io) → войдите через GitHub → **Add application** → репозиторий `sardorcos/folio`. Тип проекта определится по `codemagic.yaml`.
-2. Приложение → **Environment variables** → создайте группу **`app_store_credentials`** с переменными (все отметьте **Secure**):
+1. Приложение **folio** в Codemagic уже добавлено (репозиторий `sardorcos/folio`), workflow `ios-ci` проходит: сборка и 36 тестов.
+2. Приложение **folio** → **Environment variables** → создайте группу **`app_store_credentials`** с переменными (все отметьте **Secure**):
 
    | Переменная | Значение |
    | --- | --- |
