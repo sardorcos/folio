@@ -108,12 +108,15 @@ def main() -> int:
         team_id = next((b["attributes"].get("seedId", "") for b in bundles["data"]
                         if b["attributes"]["identifier"] == bundle_id), "")
     print(f"Team ID: {team_id or 'не найден'}")
-    key_dir = os.path.expanduser("~/.appstoreconnect/private_keys")
-    os.makedirs(key_dir, exist_ok=True)
+    # Отдельная папка: интеграция Codemagic сама хранит ключ в ~/.appstoreconnect/private_keys
+    # и ссылается на него через @file: — перезапись того же файла обнулила бы ключ.
+    key_dir = os.path.expanduser("~/folio_asc_key")
+    os.makedirs(key_dir, mode=0o700, exist_ok=True)
     key_id = resolve(os.environ["APP_STORE_CONNECT_KEY_IDENTIFIER"])
+    key_text = private_key()
     key_path = os.path.join(key_dir, f"AuthKey_{key_id}.p8")
     with open(key_path, "w") as handle:
-        handle.write(private_key())
+        handle.write(key_text)
     os.chmod(key_path, 0o600)
     env_file = os.environ.get("CM_ENV")
     if env_file:
