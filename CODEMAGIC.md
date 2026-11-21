@@ -21,7 +21,8 @@
 | Сертификат Distribution | общий `R6X78X2AJN`, закрытый ключ — `CERTIFICATE_PRIVATE_KEY` в группе **`shared_signing`** (folio, zikr, ulash, codevia) | ✅ |
 | Профили App Store | создаются/находятся автоматически (`fetch-signing-files --create`) | ✅ |
 | TestFlight | внутренняя группа **FOLIO Internal** (доступ ко всем сборкам), владелец аккаунта добавлен | ✅ |
-| Первая сборка | 0.6.0 (15) загружена в App Store Connect | ✅ |
+| Первая сборка | 0.6.0 (15) обработана, доступна группе FOLIO Internal | ✅ |
+| Внешнее тестирование | нужна Beta App Information (e-mail для отзывов, контакт для ревью) в TestFlight → Test Information; затем `submit_to_testflight: true` | ⏳ по желанию |
 
 Bundle ID задан в Build Settings проекта (`FOLIO_APP_BUNDLE_ID`); из него получаются идентификаторы расширения, тестов и App Group. Менять его больше нельзя — он уже зарегистрирован в App Store Connect.
 

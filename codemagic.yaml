@@ -144,4 +144,7 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true
+        # Внутренняя группа «FOLIO Internal» получает каждую сборку автоматически после обработки.
+        # Отправка на бета-ревью (внешнее тестирование) требует заполненной Beta App Information
+        # в App Store Connect → TestFlight → Test Information; после этого можно включить true.
+        submit_to_testflight: false
