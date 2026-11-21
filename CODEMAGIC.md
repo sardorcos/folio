@@ -45,7 +45,7 @@ Codemagic → приложение **folio** → **Start new build** → вет�
 
 - В разделе **Artifacts** будут IPA, dSYM и результаты тестов. Логи xcodebuild — в `/tmp/xcodebuild_logs`.
 - После загрузки Apple обрабатывает сборку 5–30 минут, затем она появляется в App Store Connect → **TestFlight**.
-- **Внутреннее тестирование:** TestFlight → Internal Testing → **+** → добавьте себя. Сборка станет доступна в приложении TestFlight на iPhone.
+- **Внутреннее тестирование:** группа **FOLIO Internal** создаётся и пополняется автоматически (шаг «TestFlight — приложение и внутренние тестировщики»): в неё входит владелец аккаунта, у группы доступ ко всем сборкам. Других внутренних тестировщиков (пользователей App Store Connect) можно добавить в TestFlight → Internal Testing → FOLIO Internal.
 - При первой сборке App Store Connect может спросить про шифрование. Ответ уже указан в проекте (`ITSAppUsesNonExemptEncryption = NO`), вопрос появиться не должен.
 
 ## Если сборка упала
